@@ -35,6 +35,7 @@ export const estimateMealResponseCaloriesMin = 0;
 
 export const estimateMealResponseFoodsItemCaloriesMin = 0;
 
+export const estimateMealResponseSwapsMin = 0;
 export const estimateMealResponseSwapsMax = 3;
 
 
@@ -49,7 +50,7 @@ export const EstimateMealResponse = zod.object({
 })),
   "glycemic_level": zod.enum(['Low', 'Medium', 'High']),
   "reason": zod.string(),
-  "swaps": zod.array(zod.string()).min(1).max(estimateMealResponseSwapsMax)
+  "swaps": zod.array(zod.string()).min(estimateMealResponseSwapsMin).max(estimateMealResponseSwapsMax)
 })
 
 

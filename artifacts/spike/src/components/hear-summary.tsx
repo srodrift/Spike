@@ -5,10 +5,10 @@ export function spokenSummary(log: MealLog): string {
   const name = log.estimate.name.trim().split(/\s+/).slice(0, 6).join(' ');
   const original = log.estimate.glycemic_level;
   const fix = log.appliedFixes[0];
-  const action = fix === 'walk' ? ((log.movementType ?? 'walk') === 'walk' ? 'a 10-minute walk after' : '10 minutes of movement after')
-    : fix === 'food_order' ? 'veggies or protein first' : 'the meal swap';
+  const action = fix === 'walk' ? 'movement'
+    : fix === 'food_order' ? 'veggies-first' : 'food';
   return `${name}: ${original.toLowerCase()} estimated spike. ${
-    fix ? `With ${action}: ${stepDown(original).toLowerCase()} illustrated spike. ` : ''
+    fix ? `With the ${action} suggestion: ${stepDown(original).toLowerCase()} illustrated spike. ` : ''
   }Not a measurement.`;
 }
 

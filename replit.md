@@ -41,6 +41,7 @@ _Populate as you build — non-obvious choices a reader couldn't infer from the 
 - Only pedestrian-routed paths may be presented as routes through a park. Unverified fallback loops must be labeled schematic, not directions.
 - Movement safety answers stay in localStorage only and must never enter analytics or server requests. A doctor's exercise restriction takes priority over pain and location: offer no routine or movement curve reduction.
 - Non-walking movement routines must not count as post-meal walks in Week. All movement reductions remain illustrative, not exercise clearance or personalized medical advice.
+- Call UI items suggestions, not fixes; retain existing analytics names. Food swaps must be meaningfully different, lower-impact, ingredient-aware and proportional; an empty swap list is valid and must not create a forced suggestion.
 
 ## User preferences
 

@@ -28,10 +28,12 @@ const CLEAR_MOVE = { walkCompleted: false, walkStartedAt: undefined, walkMinutes
 /** Reopened meals must pass today's saved check before showing any movement plan. */
 function displayLog(log: MealLog, settings: MovementSettings | null): MealLog {
   const option = settings ? movementOption(settings) : 'none';
-  if (log.appliedFixes.includes('walk') && (option === 'none' || option !== (log.movementType ?? 'walk'))) {
-    return { ...log, appliedFixes: log.appliedFixes.filter((f) => f !== 'walk') };
-  }
-  return log;
+  const appliedFixes = log.appliedFixes.filter((f) => {
+    if (f === 'swap' && !log.estimate.swaps.length) return false;
+    if (f === 'walk' && (option === 'none' || option !== (log.movementType ?? 'walk'))) return false;
+    return true;
+  });
+  return { ...log, appliedFixes };
 }
 
 function HeroCurves() {
@@ -132,7 +134,8 @@ export default function Home() {
   useEffect(() => {
     if (stage === 'result' && log && viewedFor.current !== log.id) {
       viewedFor.current = log.id;
-      (['walk', 'food_order', 'swap'] as FixType[]).forEach((f) => track({ event: 'fix_viewed', fix_type: f }));
+      (['walk', 'food_order', ...(log.estimate.swaps.length ? ['swap'] : [])] as FixType[])
+        .forEach((f) => track({ event: 'fix_viewed', fix_type: f }));
     }
   }, [stage, log]);
 
@@ -320,6 +323,7 @@ export default function Home() {
     const cur = base ?? log;
     const st = s === undefined ? settings : s;
     if (!cur) return;
+    if (f === 'swap' && !cur.estimate.swaps.length) return;
     let extra: Partial<MealLog> = {};
     if (f === 'walk') {
       if (!st) {
@@ -538,7 +542,7 @@ export default function Home() {
           <p className="font-mono text-[11px] uppercase tracking-[0.2em] text-primary">Step 2 of 3 &middot; check our read</p>
           <h1 className="font-display text-3xl mt-2">{first.name}</h1>
           <p className="text-muted-foreground mt-2 text-sm">
-            Here&rsquo;s what we spotted. Fix any names or portions before we sketch the curve.
+            Here&rsquo;s what we spotted. Correct any names or portions before we sketch the curve.
           </p>
           <ul className="mt-5 space-y-2">
             {chips.map((c, i) => (
@@ -658,7 +662,7 @@ function Result({
   const fixes: { type: FixType; label: string; icon: typeof Footprints }[] = [
     { type: 'walk', label: '10 min of movement after', icon: Footprints },
     { type: 'food_order', label: 'Eat veggies/protein first', icon: Salad },
-    { type: 'swap', label: est.swaps[0] ?? 'Try a lighter swap', icon: Shuffle },
+    { type: 'swap', label: est.swaps[0] ?? "This one's already a reasonable choice", icon: Shuffle },
   ];
 
   return (
@@ -699,12 +703,12 @@ function Result({
             <p className="font-semibold">Already in the Low range. These habits may keep it gentle.</p>
           )}
           <p className="text-xs mt-1 opacity-80">
-            Illustration only, based on general patterns. Not measured or guaranteed; your body may respond differently, and adding more fixes does not multiply the effect.
+            Illustration only, based on general patterns. Not measured or guaranteed; your body may respond differently, and adding more suggestions does not multiply the effect.
           </p>
         </div>
       )}
 
-      <h2 className="font-display text-xl mt-7">Gentle fixes</h2>
+      <h2 className="font-display text-xl mt-7">Ways to soften the spike</h2>
       <HearSummary log={log} />
       <div className="mt-3 space-y-2">
         {fixes.map(({ type, label, icon: Icon }) => {
@@ -713,6 +717,8 @@ function Result({
             <button
               key={type}
               data-testid={`button-fix-${type}`}
+              disabled={type === 'swap' && !est.swaps.length}
+              aria-label={`Suggestion: ${label}`}
               onClick={() => (on ? onUnfix(type) : onFix(type))}
               aria-pressed={on}
               className={`w-full flex items-center gap-3 rounded-2xl p-4 text-left border transition-all active:scale-[0.98] ${
@@ -720,7 +726,10 @@ function Result({
               }`}
             >
               <span className={`rounded-xl p-2 ${on ? 'bg-accent text-accent-foreground' : 'bg-muted'}`}><Icon className="w-5 h-5" /></span>
-              <span className="flex-1 font-medium">{label}</span>
+              <span className="flex-1 font-medium">
+                <span className="block text-[10px] font-mono uppercase tracking-wider opacity-70">Suggestion</span>
+                {label}
+              </span>
               <span className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all ${on ? 'border-accent bg-accent text-accent-foreground scale-110' : 'border-input'}`}>
                 {on && <Check className="w-3.5 h-3.5" />}
               </span>
@@ -736,13 +745,13 @@ function Result({
       {doctorNote && !applied.includes('walk') && (
         <div role="status" className="mt-3 rounded-2xl bg-secondary text-secondary-foreground p-4 rise" data-testid="text-doctor-note">
           <p className="font-semibold">{DOCTOR_MSG}</p>
-          <p className="text-xs mt-1 opacity-80">These fixes do not involve movement:</p>
+          <p className="text-xs mt-1 opacity-80">These suggestions do not involve movement:</p>
           <div className="mt-3 flex flex-wrap gap-2">
             {!applied.includes('food_order') && (
               <button onClick={() => onFix('food_order')} data-testid="button-doctor-food-order" className="rounded-full bg-foreground text-background px-4 py-2 text-sm font-semibold">Eat veggies/protein first</button>
             )}
-            {!applied.includes('swap') && (
-              <button onClick={() => onFix('swap')} data-testid="button-doctor-swap" className="rounded-full border border-foreground/30 px-4 py-2 text-sm font-semibold">{est.swaps[0] ?? 'Try a lighter swap'}</button>
+            {!applied.includes('swap') && est.swaps.length > 0 && (
+              <button onClick={() => onFix('swap')} data-testid="button-doctor-swap" aria-label={`Suggestion: ${est.swaps[0]}`} className="rounded-full border border-foreground/30 px-4 py-2 text-sm font-semibold">{est.swaps[0]}</button>
             )}
           </div>
         </div>
@@ -757,7 +766,7 @@ function Result({
 
       {est.swaps.length > 1 && (
         <div className="mt-6">
-          <h3 className="text-sm font-semibold">Other swap ideas</h3>
+          <h3 className="text-sm font-semibold">Other suggestions</h3>
           <ul className="mt-2 space-y-1 text-sm text-muted-foreground list-disc pl-5">
             {est.swaps.slice(1).map((sw) => <li key={sw}>{sw}</li>)}
           </ul>

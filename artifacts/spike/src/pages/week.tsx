@@ -155,7 +155,7 @@ export default function Week() {
                     <span className="block font-medium truncate">{l.estimate.name}</span>
                     <span className="block text-xs text-muted-foreground font-mono">
                       {new Date(l.date).toLocaleString([], { weekday: 'short', hour: 'numeric', minute: '2-digit' })} &middot; {l.estimate.glycemic_level}
-                      {l.appliedFixes.length > 0 && ` \u00b7 ${l.appliedFixes.length} fix${l.appliedFixes.length > 1 ? 'es' : ''}`}
+                      {l.appliedFixes.length > 0 && ` \u00b7 ${l.appliedFixes.length} suggestion${l.appliedFixes.length > 1 ? 's' : ''}`}
                       {l.walkCompleted && ' \u00b7 walked'}
                     </span>
                   </span>

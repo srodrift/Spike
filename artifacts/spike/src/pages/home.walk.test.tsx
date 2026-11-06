@@ -7,6 +7,7 @@ import Home from './home';
 import Week from './week';
 import { loadLogs, LOGS_CHANGED, type MealLog } from '@/lib/spike';
 import { seedWalk } from '@/test/walk-fixtures';
+import { saveMovementSettings } from '@/lib/movement';
 
 // Rendering charts/audio and fetching/rasterizing maps are unrelated to the
 // timer contract. Keep WalkSuggestion, Home, Week and persistence real.
@@ -84,6 +85,60 @@ beforeEach(() => {
       })),
     },
   }));
+});
+
+describe('movement safety and suggestion states', () => {
+  it('requires the first check before applying any movement suggestion', () => {
+    const log = seedWalk({ demo: false, appliedFixes: [] });
+    localStorage.removeItem('spike.movement.settings.v1');
+    openMeal(log, false);
+    click('button-fix-walk');
+    expect(screen.getByTestId('form-movement-settings')).toBeInTheDocument();
+    expect(screen.queryByTestId('text-reduced')).not.toBeInTheDocument();
+    expect(saved(log).appliedFixes).toEqual([]);
+    click('radio-pain-no');
+    click('radio-doctor-yes');
+    click('radio-location-out');
+    click('button-movement-save');
+    expect(screen.getByTestId('text-doctor-note')).toHaveTextContent('Check with your doctor');
+    expect(screen.queryByTestId('text-reduced')).not.toBeInTheDocument();
+    expect(saved(log).appliedFixes).toEqual([]);
+    expect(events('safety_check_completed')).toHaveLength(1);
+    expect(events('safety_check_completed')[0]).not.toHaveProperty('pain');
+    expect(events('movement_option_shown')[0]).toMatchObject({ type: 'none' });
+  });
+
+  it.each([
+    ['home', false, 'home'],
+    ['desk', false, 'desk'],
+    ['out', true, 'gentle'],
+  ] as const)('runs the %s option without counting it as a walk', (location, pain, type) => {
+    const log = seedWalk({ demo: false, appliedFixes: [] });
+    saveMovementSettings({ pain, doctorLimit: false, location });
+    openMeal(log, false);
+    click('button-fix-walk');
+    expect(screen.getByTestId(`card-movement-${type}`)).toBeInTheDocument();
+    click('button-movement-start');
+    act(() => { vi.advanceTimersByTime(60_000); });
+    click('button-movement-done');
+    expect(saved(log)).toMatchObject({ movementType: type, movementCompleted: true, walkCompleted: false });
+    expect(events('movement_completed')).toHaveLength(1);
+    expect(events('movement_completed')[0]).toMatchObject({ type });
+    expect(events('walk_completed')).toHaveLength(0);
+  });
+
+  it('shows a reasonable-choice message without applying a nonexistent swap', () => {
+    const log = seedWalk({ demo: false, appliedFixes: [] });
+    log.estimate.swaps = [];
+    localStorage.setItem('spike.logs.v1', JSON.stringify([log]));
+    openMeal(log, false);
+    expect(screen.getByText('Ways to soften the spike')).toBeInTheDocument();
+    expect(screen.getByTestId('button-fix-swap')).toBeDisabled();
+    expect(screen.getByTestId('button-fix-swap')).toHaveTextContent("This one's already a reasonable choice");
+    click('button-fix-swap');
+    expect(saved(log).appliedFixes).toEqual([]);
+    expect(screen.queryByTestId('text-reduced')).not.toBeInTheDocument();
+  });
 });
 
 describe('walk timer and Home persistence callbacks', () => {

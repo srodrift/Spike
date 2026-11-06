@@ -84,7 +84,7 @@ export function CurveChart({
   ];
   if (adjusted) {
     datasets.push({
-      label: 'With fix',
+      label: 'With suggestion',
       data: curve(overlayHeight, delayed ? 50 : 42),
       borderColor: LEVEL_STYLE[adjusted].color,
       backgroundColor: 'transparent',
@@ -137,7 +137,7 @@ export function CurveChart({
         </span>
         {adjusted && (
           <span className="flex items-center gap-1.5">
-            <i className="w-5 h-0 border-t-[3px] border-dashed" style={{ borderColor: LEVEL_STYLE[adjusted].color }} /> With fix
+            <i className="w-5 h-0 border-t-[3px] border-dashed" style={{ borderColor: LEVEL_STYLE[adjusted].color }} /> With suggestion
           </span>
         )}
       </div>

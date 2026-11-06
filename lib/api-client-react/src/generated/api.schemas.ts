@@ -54,7 +54,7 @@ export interface MealEstimate {
   glycemic_level: MealEstimateGlycemicLevel;
   reason: string;
   /**
-     * @minItems 1
+     * @minItems 0
      * @maxItems 3
      */
   swaps: string[];
