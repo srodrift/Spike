@@ -3,6 +3,7 @@ import { useSearch, useLocation } from 'wouter';
 import { Camera, Mic, MicOff, Plus, X, ArrowRight, RotateCcw, Footprints, Salad, Shuffle, Check, AlertCircle } from 'lucide-react';
 import { useEstimateMeal, estimateMeal, type MealEstimate, type MealInput } from '@workspace/api-client-react';
 import { CurveChart } from '@/components/curve-chart';
+import { HearSummary } from '@/components/hear-summary';
 import {
   compressImage,
   loadLogs,
@@ -274,9 +275,9 @@ export default function Home() {
     if (!log || log.appliedFixes.includes(f)) return;
     const wasEmpty = log.appliedFixes.length === 0;
     if (!updateLog({ ...log, appliedFixes: [...log.appliedFixes, f] })) return;
-    track({ event: 'fix_applied', fix_type: f });
+    if (!log.demo) track({ event: 'fix_applied', fix_type: f });
     const from = log.estimate.glycemic_level;
-    if (wasEmpty && from !== 'Low') track({ event: 'spike_reduced', from, to: stepDown(from) });
+    if (!log.demo && wasEmpty && from !== 'Low') track({ event: 'spike_reduced', from, to: stepDown(from) });
   };
 
   const removeFix = (f: FixType) => {
@@ -568,6 +569,7 @@ function Result({
       )}
 
       <h2 className="font-display text-xl mt-7">Gentle fixes</h2>
+      <HearSummary log={log} />
       <div className="mt-3 space-y-2">
         {fixes.map(({ type, label, icon: Icon }) => {
           const on = applied.includes(type);

@@ -1,8 +1,10 @@
 import type { ReactNode } from 'react';
 import { Link, useLocation } from 'wouter';
+import { DemoControls, useDemoLoaded } from './demo-controls';
 
 export function Shell({ children }: { children: ReactNode }) {
   const [loc] = useLocation();
+  const demo = useDemoLoaded();
   const tab = (href: string, label: string, id: string) => {
     const active = href === '/' ? loc === '/' : loc.startsWith(href);
     return (
@@ -14,6 +16,7 @@ export function Shell({ children }: { children: ReactNode }) {
         }`}
       >
         {label}
+        {id === 'week' && demo && <span className="ml-1.5 rounded-full bg-secondary px-1.5 py-0.5 text-[9px] text-secondary-foreground" data-testid="badge-demo">Demo data</span>}
       </Link>
     );
   };
@@ -42,6 +45,7 @@ export function Shell({ children }: { children: ReactNode }) {
           Estimates are rough: portion sizes are guessed and individual responses vary widely. Meal analysis is sent to an AI
           service; your logs stay on this device; usage analytics are anonymous.
         </p>
+        <DemoControls placement="footer" />
       </footer>
     </div>
   );

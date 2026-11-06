@@ -17,4 +17,5 @@ export const AnalyticsInputEvent = {
   spike_reduced: 'spike_reduced',
   weekly_view_opened: 'weekly_view_opened',
   foods_edited: 'foods_edited',
+  voice_played: 'voice_played',
 } as const;

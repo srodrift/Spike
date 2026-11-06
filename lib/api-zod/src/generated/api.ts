@@ -8,6 +8,17 @@
 import * as zod from 'zod';
 
 
+export const speakSummaryBodyTextMax = 400;
+
+
+
+export const SpeakSummaryBody = zod.object({
+  "text": zod.string().min(1).max(speakSummaryBodyTextMax)
+})
+
+export const SpeakSummaryResponse = zod.unknown()
+
+
 export const estimateMealBodyTextMax = 2000;
 
 export const estimateMealBodyImageMax = 7000000;
@@ -43,7 +54,8 @@ export const trackSpikeEventBodyCountMin = 0;
 
 
 export const TrackSpikeEventBody = zod.object({
-  "event": zod.enum(['meal_logged', 'spike_estimated', 'fix_viewed', 'fix_applied', 'spike_reduced', 'weekly_view_opened', 'foods_edited']),
+  "event": zod.enum(['meal_logged', 'spike_estimated', 'fix_viewed', 'fix_applied', 'spike_reduced', 'weekly_view_opened', 'foods_edited', 'voice_played']),
+  "source": zod.enum(['elevenlabs', 'browser']).optional(),
   "distinctId": zod.string().max(trackSpikeEventBodyDistinctIdMax),
   "input": zod.enum(['photo', 'voice', 'text']).optional(),
   "count": zod.number().int().min(trackSpikeEventBodyCountMin).optional(),

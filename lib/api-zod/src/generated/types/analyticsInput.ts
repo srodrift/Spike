@@ -10,10 +10,12 @@ import type { AnalyticsInputFixType } from './analyticsInputFixType';
 import type { AnalyticsInputFrom } from './analyticsInputFrom';
 import type { AnalyticsInputInput } from './analyticsInputInput';
 import type { AnalyticsInputLevel } from './analyticsInputLevel';
+import type { AnalyticsInputSource } from './analyticsInputSource';
 import type { AnalyticsInputTo } from './analyticsInputTo';
 
 export interface AnalyticsInput {
   event: AnalyticsInputEvent;
+  source?: AnalyticsInputSource;
   /** @maxLength 80 */
   distinctId: string;
   input?: AnalyticsInputInput;

@@ -1,12 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'wouter';
 import { AlertCircle, ArrowRight, Footprints, Flame, UtensilsCrossed, TrendingUp } from 'lucide-react';
-import { loadLogs, localDateKey, track, LEVEL_STYLE, type MealLog } from '@/lib/spike';
+import { loadLogs, localDateKey, track, LEVEL_STYLE, LOGS_CHANGED, type MealLog } from '@/lib/spike';
+import { DemoControls, useDemoLoaded } from '@/components/demo-controls';
 
 export default function Week() {
   const [logs, setLogs] = useState<MealLog[] | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const sent = useRef(false);
+  const demo = useDemoLoaded();
 
   const read = () => {
     try {
@@ -21,10 +23,16 @@ export default function Week() {
   useEffect(() => {
     document.title = 'Your week — Spike';
     read();
+    window.addEventListener(LOGS_CHANGED, read);
+    window.addEventListener('storage', read);
     if (!sent.current) {
       sent.current = true;
       track({ event: 'weekly_view_opened' });
     }
+    return () => {
+      window.removeEventListener(LOGS_CHANGED, read);
+      window.removeEventListener('storage', read);
+    };
   }, []);
 
   const stats = useMemo(() => {
@@ -50,9 +58,9 @@ export default function Week() {
       inWeek: [...inWeek].sort((a, b) => b.date.localeCompare(a.date)),
       high: inWeek.filter((l) => l.estimate.glycemic_level === 'High').length,
       walks: inWeek.filter((l) => l.walkCompleted).length,
-      streak,
+      streak: demo ? 5 : streak,
     };
-  }, [logs]);
+  }, [logs, demo]);
 
   if (!logs)
     return (
@@ -74,6 +82,12 @@ export default function Week() {
     <section className="rise">
       <p className="font-mono text-[11px] uppercase tracking-[0.2em] text-primary">Last 7 days &middot; this device only</p>
       <h1 className="font-display text-[2.4rem] leading-tight mt-2">Your week</h1>
+      {demo && (
+        <div className="mt-2 text-xs text-muted-foreground">
+          <p>Demo data · 14 sample meals, 4 illustrative reductions. The 5-day streak is simulated, not calculated from these 7 days.</p>
+          <DemoControls placement="week" />
+        </div>
+      )}
 
       {err && (
         <div className="mt-4 rounded-2xl bg-destructive/10 text-destructive p-3 text-sm flex gap-2 items-start" data-testid="text-error">
@@ -98,13 +112,23 @@ export default function Week() {
           {stats.days.map((d, i) => (
             <div key={d.key} className="flex-1 flex flex-col items-center gap-2 h-full justify-end">
               <div
-                className={`w-full rounded-lg origin-bottom rise ${d.meals.length ? 'bg-primary' : 'bg-muted'}`}
+                className="w-full rounded-lg overflow-hidden origin-bottom rise flex flex-col-reverse bg-muted"
                 style={{ height: `${d.meals.length ? (d.meals.length / max) * 80 + 10 : 6}%`, animationDelay: `${i * 40}ms` }}
                 data-testid={`bar-day-${i}`}
-              />
+                role="img"
+                aria-label={`${d.key}: ${d.meals.length} meals. ${d.meals.map((m) => m.estimate.glycemic_level).join(', ')}`}
+              >
+                {(['Low', 'Medium', 'High'] as const).map((level) => {
+                  const count = d.meals.filter((m) => m.estimate.glycemic_level === level).length;
+                  return count > 0 ? <div key={level} title={`${count} ${level} meal${count > 1 ? 's' : ''}`} style={{ flex: count, background: LEVEL_STYLE[level].color }} /> : null;
+                })}
+              </div>
               <span className={`text-[11px] font-mono ${i === 6 ? 'text-foreground font-semibold' : 'text-muted-foreground'}`}>{d.label}</span>
             </div>
           ))}
+        </div>
+        <div className="flex gap-4 mt-4 justify-center text-[10px] text-muted-foreground" aria-label="Spike levels">
+          {(['Low', 'Medium', 'High'] as const).map((level) => <span key={level} className="inline-flex gap-1 items-center"><i className="w-2 h-2 rounded-full" style={{ background: LEVEL_STYLE[level].color }} />{level}</span>)}
         </div>
       </div>
 
@@ -142,6 +166,7 @@ export default function Week() {
           })}
         </ul>
       )}
+      {stats.inWeek.length === 0 && <div className="text-center mt-3"><DemoControls placement="empty" /></div>}
     </section>
   );
 }

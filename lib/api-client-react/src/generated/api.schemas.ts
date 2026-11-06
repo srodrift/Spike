@@ -5,6 +5,14 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+export interface SpeechInput {
+  /**
+     * @minLength 1
+     * @maxLength 400
+     */
+  text: string;
+}
+
 export type MealInputInput = typeof MealInputInput[keyof typeof MealInputInput];
 
 
@@ -59,6 +67,15 @@ export const AnalyticsInputEvent = {
   spike_reduced: 'spike_reduced',
   weekly_view_opened: 'weekly_view_opened',
   foods_edited: 'foods_edited',
+  voice_played: 'voice_played',
+} as const;
+
+export type AnalyticsInputSource = typeof AnalyticsInputSource[keyof typeof AnalyticsInputSource];
+
+
+export const AnalyticsInputSource = {
+  elevenlabs: 'elevenlabs',
+  browser: 'browser',
 } as const;
 
 export type AnalyticsInputInput = typeof AnalyticsInputInput[keyof typeof AnalyticsInputInput];
@@ -108,6 +125,7 @@ export const AnalyticsInputTo = {
 
 export interface AnalyticsInput {
   event: AnalyticsInputEvent;
+  source?: AnalyticsInputSource;
   /** @maxLength 80 */
   distinctId: string;
   input?: AnalyticsInputInput;

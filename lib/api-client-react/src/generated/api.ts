@@ -29,7 +29,8 @@ import type {
   EventReceipt,
   HealthStatus,
   MealEstimate,
-  MealInput
+  MealInput,
+  SpeechInput
 } from './api.schemas';
 
 import { customFetch } from '../custom-fetch';
@@ -58,6 +59,88 @@ const withQueryKey = <T extends object, K>(query: T, queryKey: K): T & { queryKe
   }
   return result;
 };
+
+export const getSpeakSummaryUrl = () => {
+
+
+
+
+  return `/api/spike/speech`
+}
+
+export const speakSummary = async (speechInput: SpeechInput, options?: Parameters<typeof customFetch>[1]): Promise<Blob> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<Blob>(getSpeakSummaryUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(speechInput)
+  }
+);}
+
+
+
+
+
+export const getSpeakSummaryMutationKey = () => ['speakSummary'] as const;
+
+export const getSpeakSummaryMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof speakSummary>>, TError,SpeakSummaryMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof speakSummary>>, TError,SpeakSummaryMutationVariables, TContext> => {
+
+const mutationKey = getSpeakSummaryMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof speakSummary>>, SpeakSummaryMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  speakSummary(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SpeakSummaryMutationResult = NonNullable<Awaited<ReturnType<typeof speakSummary>>>
+    export type SpeakSummaryMutationBody = BodyType<SpeechInput>
+    export type SpeakSummaryMutationError = ErrorType<void>
+    export type SpeakSummaryMutationVariables = {data: BodyType<SpeechInput>}
+
+    export const useSpeakSummary = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof speakSummary>>, TError,SpeakSummaryMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof speakSummary>>,
+        TError,
+        SpeakSummaryMutationVariables,
+        TContext
+      > => {
+      return useMutation(getSpeakSummaryMutationOptions(options), queryClient);
+    }
 
 export const getEstimateMealUrl = () => {
 

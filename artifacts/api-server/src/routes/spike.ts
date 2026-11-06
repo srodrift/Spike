@@ -4,6 +4,7 @@ import {
   EstimateMealResponse,
   TrackSpikeEventBody,
   TrackSpikeEventResponse,
+  SpeakSummaryBody,
 } from "@workspace/api-zod";
 import { analyzeMeal } from "../lib/meal-ai";
 
@@ -19,6 +20,43 @@ function allowed(key: string, limit: number) {
   windows.set(key, entry);
   return entry.count <= limit;
 }
+
+router.post("/spike/speech", async (req, res): Promise<void> => {
+  res.setHeader("Cache-Control", "no-store");
+  const parsed = SpeakSummaryBody.safeParse(req.body);
+  if (!parsed.success || !parsed.data.text.trim() || parsed.data.text.trim().split(/\s+/).length >= 25) {
+    res.status(400).json({ error: "Use a summary under 25 words." });
+    return;
+  }
+  if (!allowed(`speech:${req.ip || "unknown"}`, 20)) {
+    res.status(429).json({ error: "Please wait before playing more summaries." });
+    return;
+  }
+  const apiKey = process.env.ELEVENLABS_API_KEY;
+  if (!apiKey) {
+    res.status(502).json({ error: "Voice service unavailable." });
+    return;
+  }
+  try {
+    // Fixed default Rachel voice and low-latency Eleven Turbo model.
+    const response = await fetch(
+      "https://api.elevenlabs.io/v1/text-to-speech/21m00Tcm4TlvDq8ikWAM?output_format=mp3_22050_32",
+      {
+        method: "POST",
+        headers: { "xi-api-key": apiKey, "Content-Type": "application/json", Accept: "audio/mpeg" },
+        body: JSON.stringify({ text: parsed.data.text, model_id: "eleven_turbo_v2_5" }),
+        signal: AbortSignal.timeout(4500),
+      },
+    );
+    if (!response.ok) throw new Error("Voice unavailable");
+    const audio = Buffer.from(await response.arrayBuffer());
+    if (!audio.length) throw new Error("Empty audio");
+    res.type("audio/mpeg").send(audio);
+  } catch {
+    req.log.warn("Voice service unavailable");
+    res.status(502).json({ error: "Voice service unavailable. Use browser speech instead." });
+  }
+});
 
 router.post("/spike/estimate", async (req, res): Promise<void> => {
   res.setHeader("Cache-Control", "no-store");
@@ -68,7 +106,7 @@ router.post("/spike/events", async (req, res): Promise<void> => {
     res.status(429).json({ error: "Too many events." });
     return;
   }
-  const { event, distinctId, input, level, fix_type, from, to, count } = parsed.data;
+  const { event, distinctId, input, level, fix_type, from, to, count, source } = parsed.data;
   const required: Record<string, boolean> = {
     meal_logged: !!input,
     spike_estimated: !!level,
@@ -77,6 +115,7 @@ router.post("/spike/events", async (req, res): Promise<void> => {
     spike_reduced: !!from && !!to,
     foods_edited: typeof count === "number",
     weekly_view_opened: true,
+    voice_played: !!source,
   };
   if (!distinctId.trim() || !required[event]) {
     res.status(400).json({ error: "Missing event properties." });
@@ -93,6 +132,7 @@ router.post("/spike/events", async (req, res): Promise<void> => {
     : event === "fix_viewed" || event === "fix_applied" ? { fix_type }
     : event === "spike_reduced" ? { from, to }
     : event === "foods_edited" ? { count } : {};
+  if (event === "voice_played") Object.assign(fields, { source });
   try {
     const response = await fetch("https://api.mixpanel.com/track?verbose=1&ip=0", {
       method: "POST",
