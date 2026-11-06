@@ -26,17 +26,21 @@ beforeEach(() => {
 });
 afterEach(() => { Object.defineProperty(L.Browser, 'svg', originalSvg); });
 
+function deferredLocation() {
+  const getCurrentPosition = vi.fn<Geolocation['getCurrentPosition']>();
+  vi.stubGlobal('navigator', Object.assign(Object.create(navigator), {
+    geolocation: { getCurrentPosition },
+  }));
+  return getCurrentPosition;
+}
+
 function locationResult(code?: number) {
-  const getCurrentPosition = vi.fn((success: PositionCallback, error?: PositionErrorCallback | null, _options?: PositionOptions) => {
+  return deferredLocation().mockImplementation((success, error) => {
     if (code) error?.({ code, message: 'Fixture failure' } as GeolocationPositionError);
     else success({ coords: {
       latitude: USER_LOCATION[0], longitude: USER_LOCATION[1],
     } } as GeolocationPosition);
   });
-  vi.stubGlobal('navigator', Object.assign(Object.create(navigator), {
-    geolocation: { getCurrentPosition },
-  }));
-  return getCurrentPosition;
 }
 
 function openCard() {
@@ -250,6 +254,77 @@ describe.each(['overpass', 'routing'] as const)('starting while %s is pending', 
 });
 
 describe('map privacy and navigation lifetime', () => {
+  it.each([
+    ['success', undefined],
+    ['permission denied', 1],
+    ['position unavailable', 2],
+    ['timeout', 3],
+  ] as const)(
+    'ignores late location %s after navigation and accepts a fresh request on return', async (_outcome, code) => {
+      const geolocation = deferredLocation();
+      const network = mockWalkNetwork();
+      const createMap = vi.spyOn(L, 'map');
+      const tileLayer = vi.spyOn(L, 'tileLayer');
+      const log = seedWalk({ demo: false });
+      const location = memoryLocation();
+      render(<Router hook={location.hook}>
+        <Route path="/"><WalkSuggestion log={log} onStart={() => true} onComplete={() => true} onUndo={() => true} /></Route>
+        <Route path="/away"><p>Away</p></Route>
+      </Router>);
+
+      await find();
+      expect(geolocation).toHaveBeenCalledTimes(1);
+      expect(screen.getByTestId('button-find-walk')).toBeDisabled();
+      const [success, error] = geolocation.mock.calls[0]!;
+      act(() => { location.navigate('/away'); });
+      expect(screen.getByText('Away')).toBeVisible();
+      expect(screen.queryByTestId('card-walk')).not.toBeInTheDocument();
+
+      await act(async () => {
+        if (code === undefined) {
+          success({ coords: {
+            latitude: USER_LOCATION[0], longitude: USER_LOCATION[1],
+          } } as GeolocationPosition);
+        } else {
+          error!({ code, message: 'Late fixture failure' } as GeolocationPositionError);
+        }
+        await vi.advanceTimersByTimeAsync(10_000);
+      });
+      expect(screen.getByText('Away')).toBeVisible();
+      expect(screen.queryByTestId('map-walk')).not.toBeInTheDocument();
+      expect(document.querySelector('.leaflet-container')).toBeNull();
+      expect(createMap).not.toHaveBeenCalled();
+      expect(tileLayer).not.toHaveBeenCalled();
+      expect(network).not.toHaveBeenCalled();
+      const lateEvents = vi.mocked(trackSpikeEvent).mock.calls.map(([payload]) => payload.event);
+      expect(lateEvents).not.toContain('walk_map_opened');
+      expect(lateEvents).not.toContain('location_denied');
+
+      act(() => { location.navigate('/'); });
+      expect(screen.getByTestId('button-find-walk')).toBeEnabled();
+      await find();
+      expect(geolocation).toHaveBeenCalledTimes(2);
+      expect(network).not.toHaveBeenCalled();
+      expect(createMap).not.toHaveBeenCalled();
+      await act(async () => {
+        geolocation.mock.calls[1]![0]({ coords: {
+          latitude: USER_LOCATION[0], longitude: USER_LOCATION[1],
+        } } as GeolocationPosition);
+      });
+      expect(document.querySelectorAll('.leaflet-container')).toHaveLength(1);
+      expect(tileLayer).toHaveBeenCalled();
+      expect(network).toHaveBeenCalledTimes(2);
+      expect(network.mock.calls[0]![0]).toBe(OVERPASS);
+      expect(String(network.mock.calls[1]![0]).startsWith(ROUTING)).toBe(true);
+      expect(screen.getByTestId('text-walk-source')).toHaveTextContent('Starting from your location');
+      expect(screen.getByTestId('button-walk-start')).toBeEnabled();
+      attribution();
+      const events = vi.mocked(trackSpikeEvent).mock.calls.map(([payload]) => payload.event);
+      expect(events.filter((event) => event === 'walk_map_opened')).toHaveLength(1);
+      expect(events).not.toContain('location_denied');
+    },
+  );
+
   it('saves only walk progress and sends allowlisted analytics, never coordinates', async () => {
     locationResult();
     mockWalkNetwork({ overpass: parkResponse });
