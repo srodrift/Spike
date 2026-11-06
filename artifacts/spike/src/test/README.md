@@ -86,6 +86,13 @@ using the application's demo-week generator and jsdom localStorage. Tests cover:
 - Failed Start, Done and Undo writes leave saved state and counts unchanged;
   failed Done does not emit `walk_completed`, and a retry can succeed.
 - Undo clears all timer metadata and a new walk starts at ten minutes.
+- Removing the selected walk suggestion (separate from Undo), while running or
+  completed, clears timer metadata and completion without changing other meals.
+  Week counts update immediately; remounting cannot revive the removed timer,
+  and reselecting starts a fresh ten-minute walk.
+- Removing food-order or swap suggestions preserves running and completed walk
+  progress across remounts. Failed walk-removal writes preserve storage, selected
+  state, timer/completion and Week counts, emit no change event and allow retry.
 - Demo interactions suppress analytics.
 
 The clock is fixed and advanced without real waiting. Reload is modeled by

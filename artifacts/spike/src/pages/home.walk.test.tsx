@@ -141,6 +141,148 @@ describe('movement safety and suggestion states', () => {
   });
 });
 
+describe('removing selected fixes through Home', () => {
+  it.each([false, true])('clears a removed walk, survives reload and starts fresh (completed: %s)', async (completed) => {
+    const log = seedWalk({ appliedFixes: ['walk', 'food_order', 'swap'], movementType: 'walk' });
+    const otherMeals = loadLogs().filter((entry) => entry.id !== log.id);
+    let view = openMeal(log);
+    const baseline = Number(screen.getByTestId('text-stat-walks').textContent);
+    await startWalk();
+    act(() => { vi.advanceTimersByTime(90_000); });
+    if (completed) click('button-walk-done');
+    expect(saved(log)).toMatchObject({
+      walkStartedAt: START, walkViaPark: true, walkCompleted: completed,
+      ...(completed ? { walkMinutes: 1.5 } : {}),
+    });
+    expect(screen.getByTestId('text-stat-walks')).toHaveTextContent(String(baseline + Number(completed)));
+
+    // This is the suggestion toggle, not the completed-walk Undo button.
+    click('button-fix-walk');
+    const removed = saved(log);
+    expect(removed).toMatchObject({ appliedFixes: ['food_order', 'swap'], walkCompleted: false });
+    for (const key of [
+      'walkStartedAt', 'walkMinutes', 'walkViaPark', 'movementType',
+      'movementStartedAt', 'movementCompleted', 'movementMinutes',
+    ]) {
+      expect(removed).not.toHaveProperty(key);
+    }
+    expect(loadLogs().filter((entry) => entry.id !== log.id)).toEqual(otherMeals);
+    expect(screen.getByTestId('button-fix-walk')).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.queryByTestId('text-walk-timer')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('text-walk-status')).not.toBeInTheDocument();
+    expect(screen.getByTestId('text-stat-walks')).toHaveTextContent(String(baseline));
+
+    view.unmount();
+    vi.setSystemTime(START + TEN_MINUTES);
+    view = openMeal(log);
+    expect(saved(log)).toEqual(removed);
+    expect(screen.getByTestId('button-fix-walk')).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.queryByTestId('text-walk-timer')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('text-walk-status')).not.toBeInTheDocument();
+    expect(screen.getByTestId('text-stat-walks')).toHaveTextContent(String(baseline));
+    click('button-fix-walk');
+    expect(saved(log)).toMatchObject({ movementType: 'walk', walkCompleted: false });
+    expect(saved(log)).not.toHaveProperty('walkStartedAt');
+    expect(saved(log)).not.toHaveProperty('walkMinutes');
+    expect(saved(log)).not.toHaveProperty('walkViaPark');
+    expect(screen.queryByTestId('text-walk-timer')).not.toBeInTheDocument();
+    await startWalk();
+    expect(saved(log)).toMatchObject({ walkStartedAt: START + TEN_MINUTES, walkCompleted: false });
+    expect(screen.getByTestId('text-walk-timer')).toHaveTextContent('10:00');
+    expect(screen.getByTestId('text-stat-walks')).toHaveTextContent(String(baseline));
+    click('button-walk-done');
+    expect(screen.getByTestId('text-stat-walks')).toHaveTextContent(String(baseline + 1));
+    view.unmount();
+    openMeal(log);
+    expect(saved(log).walkCompleted).toBe(true);
+    expect(screen.getByTestId('text-stat-walks')).toHaveTextContent(String(baseline + 1));
+    expect(trackSpikeEvent).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['food_order', false], ['food_order', true],
+    ['swap', false], ['swap', true],
+  ] as const)('removing %s preserves walk progress (completed: %s)', (fix, completed) => {
+    const log = seedWalk({
+      appliedFixes: ['walk', 'food_order', 'swap'], movementType: 'walk',
+      walkStartedAt: START - 90_000, walkViaPark: true, walkCompleted: completed,
+      ...(completed ? { walkMinutes: 1.5 } : {}),
+    });
+    const view = openMeal(log);
+    const count = screen.getByTestId('text-stat-walks').textContent;
+    expect(screen.getByTestId(`button-fix-${fix}`)).toBeEnabled();
+    click(`button-fix-${fix}`);
+    const expected = { ...log, appliedFixes: log.appliedFixes.filter((entry) => entry !== fix) };
+    expect(saved(log)).toEqual(expected);
+    expect(screen.getByTestId(`button-fix-${fix}`)).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.getByTestId('button-fix-walk')).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByTestId('text-stat-walks').textContent).toBe(count);
+    view.unmount();
+    vi.setSystemTime(START + 30_000);
+    openMeal(log);
+    expect(saved(log)).toEqual(expected);
+    expect(screen.getByTestId('text-stat-walks').textContent).toBe(count);
+    if (completed) {
+      expect(screen.getByTestId('button-walk-undo')).toBeInTheDocument();
+      expect(screen.getByTestId('text-walk-status')).toHaveTextContent('1.5 min logged · via a park');
+    } else {
+      expect(screen.getByTestId('text-walk-timer')).toHaveTextContent('8:00');
+      expect(screen.getByTestId('button-walk-done')).toBeEnabled();
+    }
+    expect(trackSpikeEvent).not.toHaveBeenCalled();
+  });
+
+  it.each([false, true])('preserves the previous state if removing a walk cannot save (completed: %s)', (completed) => {
+    const log = seedWalk({
+      appliedFixes: ['walk', 'food_order', 'swap'], movementType: 'walk',
+      walkStartedAt: START - 90_000, walkViaPark: true, walkCompleted: completed,
+      ...(completed ? { walkMinutes: 1.5 } : {}),
+    });
+    const view = openMeal(log);
+    const count = screen.getByTestId('text-stat-walks').textContent;
+    const raw = localStorage.getItem('spike.demo.logs.v1');
+    const writes = failLogWrites(true);
+    const changed = vi.fn();
+    window.addEventListener(LOGS_CHANGED, changed);
+    try {
+      click('button-fix-walk');
+      expect(screen.getByTestId('text-save-error')).toHaveTextContent('Nothing was updated');
+      expect(localStorage.getItem('spike.demo.logs.v1')).toBe(raw);
+      expect(saved(log)).toEqual(log);
+      expect(screen.getByTestId('button-fix-walk')).toHaveAttribute('aria-pressed', 'true');
+      expect(screen.getByTestId('text-stat-walks').textContent).toBe(count);
+      expect(changed).not.toHaveBeenCalled();
+      if (completed) {
+        expect(screen.getByTestId('button-walk-undo')).toBeEnabled();
+      } else {
+        expect(screen.getByTestId('text-walk-timer')).toHaveTextContent('8:30');
+        expect(screen.getByTestId('button-walk-done')).toBeEnabled();
+      }
+      view.unmount();
+      openMeal(log);
+      expect(saved(log)).toEqual(log);
+      expect(screen.getByTestId('button-fix-walk')).toHaveAttribute('aria-pressed', 'true');
+      expect(screen.getByTestId('text-stat-walks').textContent).toBe(count);
+      if (completed) {
+        expect(screen.getByTestId('button-walk-undo')).toBeEnabled();
+      } else {
+        expect(screen.getByTestId('text-walk-timer')).toHaveTextContent('8:30');
+      }
+      writes.mockRestore();
+      click('button-fix-walk');
+      expect(saved(log)).toMatchObject({ walkCompleted: false, appliedFixes: ['food_order', 'swap'] });
+      expect(saved(log)).not.toHaveProperty('walkStartedAt');
+      expect(screen.getByTestId('button-fix-walk')).toHaveAttribute('aria-pressed', 'false');
+      expect(screen.queryByTestId('text-save-error')).not.toBeInTheDocument();
+      expect(screen.getByTestId('text-stat-walks')).toHaveTextContent(String(Number(count) - Number(completed)));
+      expect(changed).toHaveBeenCalledTimes(1);
+      expect(trackSpikeEvent).not.toHaveBeenCalled();
+    } finally {
+      window.removeEventListener(LOGS_CHANGED, changed);
+    }
+  });
+});
+
 describe('walk timer and Home persistence callbacks', () => {
   it('persists Start and restores the elapsed countdown after a reload', async () => {
     const log = seedWalk();
