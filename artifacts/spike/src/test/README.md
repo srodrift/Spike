@@ -7,6 +7,56 @@ pnpm --filter @workspace/spike test
 pnpm --filter @workspace/spike run typecheck
 ```
 
+`walk-suggestion.test.tsx` renders **real Leaflet** in jsdom and exercises the
+real `findWalk` with mocked HTTP responses. It covers denied, unsupported,
+timed-out and unavailable geolocation, the Union Square example, a stalled
+Overpass lookup at its four-second boundary, routing failure, and a verified
+park route with its actual distance. Assertions check visible OSM attribution,
+schematic wording and dotted/solid paths, real Home progress writes and
+allowlisted analytics without user/park coordinates, and SPA navigation
+cleanup (map removal, canceled resize, aborted lookup/routing, clean remount,
+and an ignored late response).
+
+`walk-route.test.ts` checks the four-second lookup boundary, routing
+network/HTTP/no-route/invalid-geometry/distant-snap/timeout failures, park
+success, longer-loop notices, bounded park selection and cancellation in both
+network stages. Fetch is restricted to deterministic Overpass/router fixtures;
+no real map service, analytics relay or AI request is made. Native abort
+deadlines are connected to fake timers so these tests do not sleep.
+
+## Chromium checks
+
+Start the existing `artifacts/spike: web` managed workflow, then run:
+
+```sh
+pnpm --filter @workspace/spike exec playwright install chromium
+pnpm --filter @workspace/spike test:browser
+```
+
+`e2e/walk-map.spec.ts` repeats the key location/network cases at a mobile
+viewport in real Chromium. It uses the running **Vite development server**
+(including its module endpoint for the product's seed generator), not a
+production build. Its default URL is the artifact proxy at `http://localhost:80`;
+set `WALK_TEST_BASE_URL` to a development preview URL when running remotely.
+`PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH` can select a preinstalled Chromium.
+In this workspace the verified browser command is:
+
+```sh
+PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/repl/tools/bin/chromium pnpm --filter @workspace/spike test:browser
+```
+
+Each case gets an isolated browser context. API analytics are captured without
+forwarding, tiles are local placeholders, and Overpass/router responses are
+mocked. The slow Overpass case holds the response until after the app's real
+four-second timeout. The park case starts/completes a walk, checks storage and
+analytics privacy, navigates to Week and checks the detached map was cleaned up.
+Traces and failure screenshots stay in ignored `generated-artifacts/walk-browser`.
+The browser timeout error is injected; the requested five-second geolocation
+option is asserted separately in the component tests. These checks do not
+exercise a real OS permission dialog, GPS hardware or remote service availability.
+
+## Existing timer checks
+
 `home.walk.test.tsx` renders the real Home, WalkSuggestion and Week together,
 using the application's demo-week generator and jsdom localStorage. Tests cover:
 
@@ -26,7 +76,7 @@ backgrounding is modeled by jumping the wall clock without running intervals,
 then dispatching `visibilitychange`. These are component integration checks,
 not physical phone-lock or full browser navigation tests.
 
-Charts/audio and Leaflet rendering are stubbed; geolocation and route refinement
+In these timer-only checks, charts/audio and Leaflet rendering are stubbed; geolocation and route refinement
 use deterministic local fixtures. Storage, Home callbacks, Week statistics and
 the analytics allowlist remain real. A few tests copy a demo-generated meal into
 the isolated non-demo store so analytics assertions are not vacuous.

@@ -12,6 +12,7 @@ vi.mock('@workspace/api-client-react', () => ({
 
 beforeEach(() => {
   localStorage.clear();
+  sessionStorage.clear();
   // Fail closed if a new code path tries to contact any external service.
   vi.stubGlobal('fetch', vi.fn(() => { throw new Error('Network is disabled in walk tests'); }));
   vi.spyOn(XMLHttpRequest.prototype, 'open').mockImplementation(() => {
@@ -25,4 +26,5 @@ afterEach(() => {
   vi.unstubAllGlobals();
   vi.useRealTimers();
   localStorage.clear();
+  sessionStorage.clear();
 });
