@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { defaultWalk, distanceMeters, FALLBACK_LOCATION, findWalk, nearestPark } from './walk-route';
+import type { LatLng } from './walk-route';
 import {
   jsonResponse, mockAbortTimeouts, mockWalkNetwork, OVERPASS, PARK_LOCATION,
   PARK_NAME, parkResponse, ROUTING, routeResponse, untilAborted, USER_LOCATION,
@@ -73,6 +74,52 @@ describe('walk route network boundaries', () => {
       expect(network).toHaveBeenCalledTimes(2);
     },
   );
+
+  it.each([
+    { snapMeters: 99.99, accepted: true },
+    { snapMeters: 100, accepted: true },
+    { snapMeters: 100.01, accepted: false },
+    { snapMeters: 200, accepted: false },
+  ])('independently checks the park snap at $snapMeters m (accepted: $accepted)', async ({
+    snapMeters, accepted,
+  }) => {
+    // Use an equatorial park so the exact 100m boundary is representable without
+    // subtracting nearly equal nonzero latitudes. Keep the real distance function.
+    const start: LatLng = [-0.0024, 0];
+    const park: LatLng = [0, 0];
+    const snappedPark: LatLng = [snapMeters / 6_371_000 * 180 / Math.PI, 0];
+    const measuredSnap = distanceMeters(park, snappedPark);
+    expect(measuredSnap).toBeCloseTo(snapMeters, 8);
+    if (snapMeters === 100) expect(measuredSnap).toBe(100);
+    const network = mockWalkNetwork({
+      overpass: () => jsonResponse({ elements: [{ lat: park[0], lon: park[1], tags: { name: PARK_NAME } }] }),
+      routing: async (url) => {
+        const data = await routeResponse(url, 860).json();
+        expect(data.waypoints[0].location).toEqual([start[1], start[0]]);
+        expect(data.waypoints[2].location).toEqual([park[1], park[0]]);
+        // Only the park snap moves; geometry remains valid and follows that snap.
+        data.waypoints[2].location = [snappedPark[1], snappedPark[0]];
+        data.routes[0].geometry.coordinates[2] = data.waypoints[2].location;
+        return jsonResponse(data);
+      },
+    });
+    const plan = await findWalk(start, new AbortController().signal);
+    expect(network).toHaveBeenCalledTimes(2);
+    if (accepted) {
+      expect(plan).toMatchObject({
+        start, routed: true, viaPark: true, parkName: PARK_NAME, distanceMeters: 860,
+      });
+      expect(plan.path).toContainEqual(snappedPark);
+    } else {
+      expect(plan).toEqual({
+        ...defaultWalk(start),
+        note: expect.stringContaining('not a verified route'),
+      });
+      expect(plan.routed).toBe(false);
+      expect(plan.viaPark).toBe(false);
+      expect(plan.parkName).toBeUndefined();
+    }
+  });
 
   it('claims a park only after pedestrian routing succeeds, and uses the returned distance', async () => {
     const network = mockWalkNetwork({

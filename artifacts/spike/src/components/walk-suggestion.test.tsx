@@ -123,21 +123,36 @@ describe('walk map location fallbacks and refinement', () => {
     attribution();
   });
 
-  it('never advertises an unverified park when routing fails', async () => {
-    locationResult();
-    mockWalkNetwork({ overpass: parkResponse, routing: () => { throw new TypeError('Offline'); } });
-    const { onStart } = openCard();
-    await find();
-    expect(screen.queryByText('Finding paths')).not.toBeInTheDocument();
-    expect(screen.queryByTestId('text-walk-park')).not.toBeInTheDocument();
-    expect(screen.getByTestId('text-walk-sketch')).toHaveTextContent('schematic sketch');
-    expect(screen.getByText(/Walking directions unavailable/)).toBeVisible();
-    expect(screen.getByTestId('text-walk-distance')).toHaveTextContent('~0.80 km');
-    expect(document.querySelector('.leaflet-overlay-pane path')).toHaveAttribute('stroke-dasharray', '2 8');
-    attribution();
-    fireEvent.click(screen.getByTestId('button-walk-start'));
-    expect(onStart).toHaveBeenCalledWith(expect.any(Number), false);
-  });
+  it.each(['offline', 'park snap too far'] as const)(
+    'never advertises an unverified park when routing fails: %s', async (failure) => {
+      locationResult();
+      const network = mockWalkNetwork({
+        overpass: parkResponse,
+        routing: async (url) => {
+          if (failure === 'offline') throw new TypeError('Offline');
+          const data = await routeResponse(url, 860).json();
+          expect(data.waypoints[0].location).toEqual([USER_LOCATION[1], USER_LOCATION[0]]);
+          // About 111m from the park, with the start and other waypoints unchanged.
+          data.waypoints[2].location = [PARK_LOCATION[1], PARK_LOCATION[0] + 0.001];
+          data.routes[0].geometry.coordinates[2] = data.waypoints[2].location;
+          return jsonResponse(data);
+        },
+      });
+      const { onStart } = openCard();
+      await find();
+      expect(network).toHaveBeenCalledTimes(2);
+      expect(screen.queryByText('Finding paths')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('text-walk-park')).not.toBeInTheDocument();
+      expect(screen.queryByText(new RegExp(PARK_NAME))).not.toBeInTheDocument();
+      expect(screen.getByTestId('text-walk-sketch')).toHaveTextContent('schematic sketch');
+      expect(screen.getByText(/Walking directions unavailable/)).toBeVisible();
+      expect(screen.getByTestId('text-walk-distance')).toHaveTextContent('~0.80 km');
+      expect(document.querySelector('.leaflet-overlay-pane path')).toHaveAttribute('stroke-dasharray', '2 8');
+      attribution();
+      fireEvent.click(screen.getByTestId('button-walk-start'));
+      expect(onStart).toHaveBeenCalledWith(expect.any(Number), false);
+    },
+  );
 
   it('shows the routed park and real distance, with a solid path and no schematic claim', async () => {
     locationResult();
