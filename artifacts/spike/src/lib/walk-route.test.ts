@@ -98,6 +98,151 @@ describe('walk route network boundaries', () => {
     });
   });
 
+  describe('no-park street-snapping correction', () => {
+    it.each([
+      { first: 400, scale: 2 },
+      { first: 1600, scale: 0.5 },
+      { first: 100, scale: 2 },
+      { first: 4000, scale: 0.3 },
+    ])('resizes a $first m route once by $scale, with fixed start and end', async ({ first, scale }) => {
+      const routing = vi.fn((url: string) => routeResponse(url, routing.mock.calls.length === 1 ? first : 800));
+      const network = mockWalkNetwork({ routing });
+      const plan = await findWalk(USER_LOCATION, new AbortController().signal);
+
+      expect(network).toHaveBeenCalledTimes(3);
+      expect(network.mock.calls[0]![0]).toBe(OVERPASS);
+      expect(routing).toHaveBeenCalledTimes(2);
+      const requestedPoints = routing.mock.calls.map(([url]) =>
+        url.slice(ROUTING.length).split('?')[0]!.split(';')
+          .map((pair) => pair.split(',').map(Number)),
+      );
+      const [initial, resized] = requestedPoints;
+      const start = [USER_LOCATION[1], USER_LOCATION[0]];
+      expect(initial).toHaveLength(5);
+      expect(resized).toHaveLength(5);
+      expect(initial![0]).toEqual(start);
+      expect(initial!.at(-1)).toEqual(start);
+      expect(resized![0]).toEqual(start);
+      expect(resized!.at(-1)).toEqual(start);
+      for (let i = 1; i <= 3; i++) {
+        expect(resized![i]![0]).toBeCloseTo(start[0]! + (initial![i]![0]! - start[0]!) * scale, 10);
+        expect(resized![i]![1]).toBeCloseTo(start[1]! + (initial![i]![1]! - start[1]!) * scale, 10);
+      }
+      expect(plan).toMatchObject({
+        start: USER_LOCATION, routed: true, viaPark: false, distanceMeters: 800,
+        path: resized!.map(([lon, lat]) => [lat, lon]),
+        waypoints: resized!.slice(1, -1).map(([lon, lat]) => [lat, lon]),
+      });
+      expect(plan.parkName).toBeUndefined();
+    });
+
+    it.each([550, 800, 1100])('does not resize an in-range %i m route', async (distance) => {
+      const routing = vi.fn((url: string) => routeResponse(url, distance));
+      const network = mockWalkNetwork({ routing });
+      const plan = await findWalk(USER_LOCATION, new AbortController().signal);
+      expect(plan).toMatchObject({ distanceMeters: distance, routed: true, viaPark: false });
+      expect(routing).toHaveBeenCalledTimes(1);
+      expect(network).toHaveBeenCalledTimes(2);
+    });
+
+    it.each([
+      { first: 500, corrected: 540, selected: 540 },
+      { first: 1200, corrected: 1150, selected: 1150 },
+      { first: 500, corrected: 1200, selected: 500 },
+      { first: 1200, corrected: 300, selected: 1200 },
+      { first: 500, corrected: 1100, selected: 500 },
+    ])('keeps the closer route for $first → $corrected m, without a third attempt', async ({
+      first, corrected, selected,
+    }) => {
+      const routing = vi.fn((url: string) => routeResponse(url, routing.mock.calls.length === 1 ? first : corrected));
+      const network = mockWalkNetwork({ routing });
+      const plan = await findWalk(USER_LOCATION, new AbortController().signal);
+      expect(routing).toHaveBeenCalledTimes(2);
+      expect(network).toHaveBeenCalledTimes(3);
+      const selectedUrl = routing.mock.calls[selected === first ? 0 : 1]![0];
+      const selectedRoute = await routeResponse(selectedUrl, selected).json();
+      expect(plan).toMatchObject({
+        distanceMeters: selected, routed: true, viaPark: false,
+        path: selectedRoute.routes[0].geometry.coordinates.map(([lon, lat]: number[]) => [lat, lon]),
+      });
+      expect(plan.parkName).toBeUndefined();
+      if (selected > 1100) expect(plan.note).toContain('longer than 10 minutes');
+      else expect(plan.note).not.toContain('longer than 10 minutes');
+    });
+
+    it.each(['rejected', 'http', 'no-route', 'invalid-geometry', 'timeout'] as const)(
+      'retains the first valid long route when correction fails: %s', async (failure) => {
+        const routing = vi.fn((url: string, init: RequestInit) => {
+          if (routing.mock.calls.length === 1) return routeResponse(url, 1450);
+          if (failure === 'rejected') throw new TypeError('Offline during correction');
+          if (failure === 'http') return jsonResponse({}, 503);
+          if (failure === 'no-route') return jsonResponse({ code: 'NoRoute', routes: [] });
+          if (failure === 'timeout') return untilAborted(url, init);
+          return jsonResponse({
+            code: 'Ok',
+            routes: [{ distance: 800, geometry: { coordinates: [[999, 999]] } }],
+          });
+        });
+        const network = mockWalkNetwork({ routing });
+        const pending = findWalk(USER_LOCATION, new AbortController().signal);
+        if (failure === 'timeout') await vi.advanceTimersByTimeAsync(5000);
+        const plan = await pending;
+        expect(routing).toHaveBeenCalledTimes(2);
+        expect(network).toHaveBeenCalledTimes(3);
+        expect(plan).toMatchObject({
+          start: USER_LOCATION, routed: true, viaPark: false, distanceMeters: 1450,
+          waypoints: defaultWalk(USER_LOCATION).waypoints,
+          path: defaultWalk(USER_LOCATION).path,
+          note: expect.stringContaining('longer than 10 minutes'),
+        });
+        expect(plan.parkName).toBeUndefined();
+        if (failure === 'timeout') expect(routing.mock.calls[1]![1].signal!.aborted).toBe(true);
+      },
+    );
+
+    it('bounds correction by the original routing deadline, not a fresh five seconds', async () => {
+      const routing = vi.fn((url: string, init: RequestInit) => {
+        if (routing.mock.calls.length === 1) {
+          return new Promise<Response>((resolve) => setTimeout(() => resolve(routeResponse(url, 1450)), 3000));
+        }
+        return untilAborted(url, init);
+      });
+      mockWalkNetwork({ routing });
+      const pending = findWalk(USER_LOCATION, new AbortController().signal);
+      let settled = false;
+      void pending.then(() => { settled = true; });
+      await vi.advanceTimersByTimeAsync(3000);
+      expect(routing).toHaveBeenCalledTimes(2);
+      const correctionSignal = routing.mock.calls[1]![1].signal!;
+      await vi.advanceTimersByTimeAsync(1999);
+      expect(settled).toBe(false);
+      expect(correctionSignal.aborted).toBe(false);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(await pending).toMatchObject({ routed: true, distanceMeters: 1450 });
+      expect(correctionSignal.aborted).toBe(true);
+      expect(routing).toHaveBeenCalledTimes(2);
+    });
+
+    it('propagates parent cancellation during correction rather than returning the first route', async () => {
+      const routing = vi.fn((url: string, init: RequestInit) =>
+        routing.mock.calls.length === 1 ? routeResponse(url, 1450) : untilAborted(url, init),
+      );
+      const network = mockWalkNetwork({ routing });
+      const controller = new AbortController();
+      const pending = findWalk(USER_LOCATION, controller.signal);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(routing).toHaveBeenCalledTimes(2);
+      const correctionSignal = routing.mock.calls[1]![1].signal!;
+      expect(correctionSignal.aborted).toBe(false);
+      const reason = new DOMException('Walk map closed during correction', 'AbortError');
+      const rejects = expect(pending).rejects.toBe(reason);
+      controller.abort(reason);
+      await rejects;
+      expect(correctionSignal.aborted).toBe(true);
+      expect(network).toHaveBeenCalledTimes(3);
+    });
+  });
+
   it.each(['overpass', 'routing'] as const)('propagates navigation cancellation during %s', async (stage) => {
     const network = mockWalkNetwork(stage === 'overpass'
       ? { overpass: untilAborted }
