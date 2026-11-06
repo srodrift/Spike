@@ -25,9 +25,12 @@ type MoveKind = 'walk' | 'home' | 'desk' | 'gentle';
 const DOCTOR_MSG = 'Check with your doctor about safe movement after meals';
 const CLEAR_MOVE = { walkCompleted: false, walkStartedAt: undefined, walkMinutes: undefined, walkViaPark: undefined, movementStartedAt: undefined, movementCompleted: undefined, movementMinutes: undefined };
 
-/** Hide movement for doctor-limited users, even on reopened logs. */
+/** Reopened meals must pass today's saved check before showing any movement plan. */
 function displayLog(log: MealLog, settings: MovementSettings | null): MealLog {
-  if (settings?.doctorLimit && log.appliedFixes.includes('walk')) return { ...log, appliedFixes: log.appliedFixes.filter((f) => f !== 'walk') };
+  const option = settings ? movementOption(settings) : 'none';
+  if (log.appliedFixes.includes('walk') && (option === 'none' || option !== (log.movementType ?? 'walk'))) {
+    return { ...log, appliedFixes: log.appliedFixes.filter((f) => f !== 'walk') };
+  }
   return log;
 }
 

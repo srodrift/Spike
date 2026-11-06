@@ -40,7 +40,7 @@ export function Shell({ children }: { children: ReactNode }) {
       <main className="flex-1 mx-auto w-full max-w-xl px-5 pt-6 pb-10">{children}</main>
       <footer className="mx-auto max-w-xl w-full px-5 pb-8 text-xs text-muted-foreground space-y-2">
         <p className="font-medium text-foreground/80 flex items-center gap-2" data-testid="text-disclaimer">
-          <span className="truncate">Education only, not medical advice.</span>
+          <span>Education only, not medical advice.</span>
           <button
             type="button"
             data-testid="button-disclaimer-details"
@@ -51,10 +51,6 @@ export function Shell({ children }: { children: ReactNode }) {
           >
             {details ? 'Hide' : 'Details'}
           </button>
-          <span aria-hidden className="text-border">|</span>
-          <Link href="/?movement=settings" data-testid="link-movement-settings" className="shrink-0 underline underline-offset-2">
-            Movement settings
-          </Link>
         </p>
         {details && (
           <div id="disclaimer-details" className="space-y-2 rise" data-testid="text-disclaimer-details">
@@ -65,6 +61,11 @@ export function Shell({ children }: { children: ReactNode }) {
             </p>
           </div>
         )}
+        <p>
+          <Link href="/?movement=settings" data-testid="link-movement-settings" className="underline underline-offset-2">
+            Movement settings
+          </Link>
+        </p>
         <DemoControls placement="footer" />
       </footer>
     </div>

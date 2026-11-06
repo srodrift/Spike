@@ -142,7 +142,7 @@ export function HearSummary({ log }: { log: MealLog }) {
         className="rounded-full border border-input bg-card px-4 py-2 text-sm font-medium hover:border-foreground/40 transition-colors"
         onClick={() => state === 'idle' ? void play() : (stop(), setState('idle'))}
         aria-label={state === 'idle' ? 'Hear it' : 'Stop voice summary'}
-      >{state === 'loading' ? 'Preparing voice… Cancel' : state === 'playing' ? 'Stop audio' : 'Hear it'}</button>
+      >{state === 'loading' ? 'Preparing voice… Cancel' : state === 'playing' ? 'Stop audio' : '🔊 Hear it'}</button>
       <p className="text-xs text-muted-foreground mt-2">AI voice summary · tap to listen</p>
       <p className="text-xs text-muted-foreground mt-1" data-testid="text-voice-summary">{summary}</p>
       {note && <p role="status" className="text-xs text-muted-foreground mt-1">{note}</p>}
