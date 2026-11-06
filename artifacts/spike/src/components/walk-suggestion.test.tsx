@@ -44,6 +44,13 @@ function openCard() {
   return { ...render(<WalkSuggestion log={seedWalk({ demo: false })} {...callbacks} />), ...callbacks };
 }
 
+function openSavedWalk() {
+  const log = seedWalk({ demo: false });
+  const location = memoryLocation({ path: `/?log=${encodeURIComponent(log.id)}` });
+  render(<Router hook={location.hook}><Home /></Router>);
+  return log;
+}
+
 async function find() {
   await act(async () => { fireEvent.click(screen.getByTestId('button-find-walk')); });
 }
@@ -141,6 +148,104 @@ describe('walk map location fallbacks and refinement', () => {
     attribution();
     fireEvent.click(screen.getByTestId('button-walk-start'));
     expect(onStart).toHaveBeenCalledWith(expect.any(Number), true);
+  });
+});
+
+describe.each(['overpass', 'routing'] as const)('starting while %s is pending', (stage) => {
+  it.each(['honors abort', 'returns late success'] as const)(
+    'aborts refinement and freezes the displayed and saved plan when the request %s', async (behavior) => {
+      locationResult();
+      let resolve!: (response: Response) => void;
+      // The late-success variant deliberately never listens to the AbortSignal.
+      const pending = behavior === 'honors abort'
+        ? untilAborted
+        : () => new Promise<Response>((done) => { resolve = done; });
+      const network = mockWalkNetwork({
+        overpass: stage === 'overpass' ? pending : parkResponse,
+        routing: stage === 'routing' ? pending : (url) => routeResponse(url, 1450),
+      });
+      const log = openSavedWalk();
+      await find();
+      expect(network).toHaveBeenCalledTimes(stage === 'overpass' ? 1 : 2);
+      expect(screen.getByText('Finding paths')).toBeVisible();
+      const [pendingUrl, pendingInit] = network.mock.calls.at(-1)!;
+      const map = document.querySelector('.leaflet-container')!;
+      const path = document.querySelector('.leaflet-overlay-pane path')!;
+      const pathMarkup = path.outerHTML;
+      const distance = screen.getByTestId('text-walk-distance').textContent;
+      const sketch = screen.getByTestId('text-walk-sketch').textContent;
+      const source = screen.getByTestId('text-walk-source').textContent;
+      const remove = vi.spyOn(L.Map.prototype, 'remove');
+      const startedAt = Date.now();
+
+      await act(async () => { fireEvent.click(screen.getByTestId('button-walk-start')); });
+      expect(pendingInit!.signal!.aborted).toBe(true);
+      expect(screen.getByText('Walking now')).toBeVisible();
+      expect(screen.getByTestId('text-walk-timer')).toHaveTextContent('10:00');
+      expect(screen.getByTestId('button-walk-done')).toBeEnabled();
+      expect(screen.queryByTestId('button-walk-start')).not.toBeInTheDocument();
+      const saved = loadLogs().find((entry) => entry.id === log.id)!;
+      expect(saved).toMatchObject({ walkStartedAt: startedAt, walkViaPark: false, walkCompleted: false });
+
+      const expectFrozenPlan = () => {
+        expect(screen.queryByText('Finding paths')).not.toBeInTheDocument();
+        expect(screen.getByTestId('text-walk-distance').textContent).toBe(distance);
+        expect(screen.getByTestId('text-walk-sketch').textContent).toBe(sketch);
+        expect(screen.getByTestId('text-walk-source').textContent).toBe(source);
+        expect(screen.queryByTestId('text-walk-park')).not.toBeInTheDocument();
+        expect(document.querySelector('.leaflet-container')).toBe(map);
+        expect(document.querySelector('.leaflet-overlay-pane path')).toBe(path);
+        expect(path.outerHTML).toBe(pathMarkup);
+        expect(remove).not.toHaveBeenCalled();
+        expect(loadLogs().find((entry) => entry.id === log.id)).toEqual(saved);
+      };
+      expectFrozenPlan();
+      if (behavior === 'returns late success') {
+        // Both responses would otherwise replace the sketch with a longer park route.
+        await act(async () => {
+          resolve(stage === 'overpass' ? parkResponse() : routeResponse(String(pendingUrl), 1450));
+        });
+      }
+      await act(async () => { await vi.advanceTimersByTimeAsync(10_000); });
+      expectFrozenPlan();
+      expect(screen.getByTestId('text-walk-timer')).toHaveTextContent('9:50');
+      const events = vi.mocked(trackSpikeEvent).mock.calls.map(([payload]) => payload);
+      expect(events.filter(({ event }) => event === 'walk_started')).toEqual([
+        expect.objectContaining({ minutes: 10, via_park: false }),
+      ]);
+      expect(events.filter(({ event }) => event === 'movement_started')).toHaveLength(1);
+    },
+  );
+
+  it('does not claim walking began when the Start storage write fails', async () => {
+    locationResult();
+    const network = mockWalkNetwork({
+      overpass: stage === 'overpass' ? untilAborted : parkResponse,
+      routing: untilAborted,
+    });
+    const log = openSavedWalk();
+    await find();
+    const signal = network.mock.calls.at(-1)![1]!.signal!;
+    const before = loadLogs();
+    const write = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new DOMException('Fixture storage is full', 'QuotaExceededError');
+    });
+
+    await act(async () => { fireEvent.click(screen.getByTestId('button-walk-start')); });
+    expect(write).toHaveBeenCalledWith('spike.logs.v1', expect.any(String));
+    expect(screen.getByTestId('text-save-error')).toHaveTextContent('Nothing was updated');
+    expect(screen.queryByText('Walking now')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('text-walk-timer')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('button-walk-done')).not.toBeInTheDocument();
+    expect(screen.getByTestId('button-walk-start')).toBeEnabled();
+    expect(screen.getByTestId('text-walk-sketch')).toBeVisible();
+    expect(signal.aborted).toBe(true);
+    expect(screen.queryByText('Finding paths')).not.toBeInTheDocument();
+    expect(loadLogs()).toEqual(before);
+    expect(loadLogs().find((entry) => entry.id === log.id)?.walkStartedAt).toBeUndefined();
+    const events = vi.mocked(trackSpikeEvent).mock.calls.map(([payload]) => payload.event);
+    expect(events).not.toContain('walk_started');
+    expect(events).not.toContain('movement_started');
   });
 });
 
