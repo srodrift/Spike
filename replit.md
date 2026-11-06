@@ -1,6 +1,6 @@
-# [Project name]
+# Spike
 
-_Replace the heading above with the project's name, and this line with one sentence describing what this app does for users._
+Mobile-first meal education: identify foods from photos, speech or text, explore illustrative glucose curves, and log meals locally.
 
 ## Run & Operate
 
@@ -30,7 +30,10 @@ _Populate as you build — non-obvious choices a reader couldn't infer from the 
 
 ## Product
 
-_Describe the high-level user-facing capabilities of this app once they exist._
+- Meal logs stay only in localStorage. Do not introduce a server database for meal history.
+- Photo/text meal data is sent transiently to managed AI; analytics send only anonymous allowlisted event properties, never food descriptions or media.
+- All curves and reductions are illustrative, not measurements or personalized medical predictions. Never use these for insulin or medication decisions.
+- Selecting a walk fix is a plan, not evidence of walking; only explicitly completed walks count in the weekly view.
 
 ## User preferences
 

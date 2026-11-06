@@ -11,6 +11,50 @@ tags:
   - name: health
     description: Health operations
 paths:
+  /spike/estimate:
+    post:
+      operationId: estimateMeal
+      tags: [spike]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MealInput"
+      responses:
+        "200":
+          description: Educational meal estimate
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MealEstimate"
+        "400":
+          description: Invalid meal
+        "429":
+          description: Too many requests
+        "502":
+          description: Analysis unavailable
+  /spike/events:
+    post:
+      operationId: trackSpikeEvent
+      tags: [spike]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AnalyticsInput"
+      responses:
+        "200":
+          description: Event delivered
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EventReceipt"
+        "400":
+          description: Invalid event
+        "502":
+          description: Analytics unavailable
   /healthz:
     get:
       operationId: healthCheck
@@ -26,6 +70,82 @@ paths:
                 $ref: "#/components/schemas/HealthStatus"
 components:
   schemas:
+    MealInput:
+      type: object
+      required: [input]
+      properties:
+        input:
+          type: string
+          enum: [photo, voice, text]
+        text:
+          type: string
+          maxLength: 2000
+        image:
+          type: string
+          maxLength: 7000000
+    MealEstimate:
+      type: object
+      required: [name, foods, glycemic_level, reason, swaps]
+      properties:
+        name:
+          type: string
+        foods:
+          type: array
+          items:
+            $ref: "#/components/schemas/Food"
+        glycemic_level:
+          type: string
+          enum: [Low, Medium, High]
+        reason:
+          type: string
+        swaps:
+          type: array
+          minItems: 1
+          maxItems: 3
+          items:
+            type: string
+    Food:
+      type: object
+      required: [name, portion]
+      properties:
+        name:
+          type: string
+        portion:
+          type: string
+    AnalyticsInput:
+      type: object
+      required: [event, distinctId]
+      properties:
+        event:
+          type: string
+          enum: [meal_logged, spike_estimated, fix_viewed, fix_applied, spike_reduced, weekly_view_opened, foods_edited]
+        distinctId:
+          type: string
+          maxLength: 80
+        input:
+          type: string
+          enum: [photo, voice, text]
+        count:
+          type: integer
+          minimum: 0
+        level:
+          type: string
+          enum: [Low, Medium, High]
+        fix_type:
+          type: string
+          enum: [walk, food_order, swap]
+        from:
+          type: string
+          enum: [Low, Medium, High]
+        to:
+          type: string
+          enum: [Low, Medium, High]
+    EventReceipt:
+      type: object
+      required: [ok]
+      properties:
+        ok:
+          type: boolean
     HealthStatus:
       type: object
       properties:

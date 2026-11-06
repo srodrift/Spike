@@ -1,0 +1,1 @@
+- [Latency-bounded meal analysis](meal-analysis.md) — structured AI output and fast reasoning settings matter for the ten-second fallback.

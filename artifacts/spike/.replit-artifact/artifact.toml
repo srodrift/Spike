@@ -1,0 +1,28 @@
+kind = "web"
+previewPath = "/"
+title = "Spike"
+description = "Mobile-first meal education: estimate glycemic load from a meal photo or text, explore illustrative glucose curves and simple changes, and track a week of meals locally."
+version = "1.0.0"
+id = "artifacts/spike"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 24134
+
+[services.development]
+run = "pnpm --filter @workspace/spike run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/spike", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/spike/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "24134"
+BASE_PATH = "/"
