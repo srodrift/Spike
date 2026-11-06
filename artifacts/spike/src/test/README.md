@@ -1,4 +1,4 @@
-# Walk regression checks
+# Spike regression checks
 
 Run from the workspace root:
 
@@ -6,6 +6,24 @@ Run from the workspace root:
 pnpm --filter @workspace/spike test
 pnpm --filter @workspace/spike run typecheck
 ```
+
+## Meal history and demo controls
+
+`spike.test.ts` and `demo-controls.test.tsx` use isolated personal and demo
+histories, real storage helpers and real demo controls. They cover loading and
+resetting demo meals, edits and deletes in each store, saving a personal meal
+while demo is active, and restoring personal history byte-for-byte after clear.
+Controls synchronize across placements and storage events and remove listeners
+on unmount. Failed writes, failed clear operations, unreadable mode storage,
+corrupt history and failed save verification must not silently select or
+overwrite another history; controls surface actionable errors and allow retry.
+
+The shared setup mocks the API analytics relay before import and blocks fetch
+and XHR. Analytics assertions check demo suppression and personal emission
+without contacting the relay or Mixpanel. No browser or external service is
+needed for these regressions.
+
+## Walk routing checks
 
 `walk-suggestion.test.tsx` renders **real Leaflet** in jsdom and exercises the
 real `findWalk` with mocked HTTP responses. It covers denied, unsupported,

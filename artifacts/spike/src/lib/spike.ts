@@ -35,8 +35,15 @@ function notifyLogsChanged() {
 }
 
 export function clearDemoData(): void {
+  const active = localStorage.getItem(DEMO_ACTIVE);
   localStorage.removeItem(DEMO_ACTIVE);
-  localStorage.removeItem(DEMO_KEY);
+  try {
+    localStorage.removeItem(DEMO_KEY);
+  } catch (error) {
+    // A failed clear must not leave the UI on a different history.
+    if (active !== null) localStorage.setItem(DEMO_ACTIVE, active);
+    throw error;
+  }
   notifyLogsChanged();
 }
 
@@ -123,10 +130,16 @@ export function getDistinctId(): string {
 }
 
 export function loadLogs(): MealLog[] {
-  const raw = localStorage.getItem(demoLoaded() ? DEMO_KEY : LOGS_KEY);
+  const raw = localStorage.getItem(activeLogsKey());
   if (!raw) return [];
   const parsed = JSON.parse(raw);
   return Array.isArray(parsed) ? (parsed as MealLog[]) : [];
+}
+
+function activeLogsKey(): string {
+  // Unlike the display-only demoLoaded(), storage operations must fail closed:
+  // an unreadable mode flag is not permission to read or mutate personal logs.
+  return localStorage.getItem(DEMO_ACTIVE) === 'true' ? DEMO_KEY : LOGS_KEY;
 }
 
 /** Throws on failure — callers must surface errors. */
@@ -145,7 +158,7 @@ export function upsertLog(log: MealLog): void {
 
 export function deleteLog(id: string): void {
   const logs = loadLogs().filter((l) => l.id !== id);
-  localStorage.setItem(demoLoaded() ? DEMO_KEY : LOGS_KEY, JSON.stringify(logs));
+  localStorage.setItem(activeLogsKey(), JSON.stringify(logs));
   notifyLogsChanged();
 }
 
