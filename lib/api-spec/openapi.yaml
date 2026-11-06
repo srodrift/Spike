@@ -116,8 +116,11 @@ components:
           maxLength: 7000000
     MealEstimate:
       type: object
-      required: [name, foods, glycemic_level, reason, swaps]
+      required: [name, foods, glycemic_level, reason, swaps, calories]
       properties:
+        calories:
+          type: number
+          minimum: 0
         name:
           type: string
         foods:
@@ -137,8 +140,11 @@ components:
             type: string
     Food:
       type: object
-      required: [name, portion]
+      required: [name, portion, calories]
       properties:
+        calories:
+          type: number
+          minimum: 0
         name:
           type: string
         portion:
@@ -147,6 +153,9 @@ components:
       type: object
       required: [event, distinctId]
       properties:
+        calories:
+          type: number
+          minimum: 0
         event:
           type: string
           enum: [meal_logged, spike_estimated, fix_viewed, fix_applied, spike_reduced, weekly_view_opened, foods_edited, voice_played]

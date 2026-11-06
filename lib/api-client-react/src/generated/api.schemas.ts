@@ -40,11 +40,15 @@ export const MealEstimateGlycemicLevel = {
 } as const;
 
 export interface Food {
+  /** @minimum 0 */
+  calories: number;
   name: string;
   portion: string;
 }
 
 export interface MealEstimate {
+  /** @minimum 0 */
+  calories: number;
   name: string;
   foods: Food[];
   glycemic_level: MealEstimateGlycemicLevel;
@@ -124,6 +128,8 @@ export const AnalyticsInputTo = {
 } as const;
 
 export interface AnalyticsInput {
+  /** @minimum 0 */
+  calories?: number;
   event: AnalyticsInputEvent;
   source?: AnalyticsInputSource;
   /** @maxLength 80 */

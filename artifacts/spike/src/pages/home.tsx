@@ -18,7 +18,7 @@ import {
 } from '@/lib/spike';
 
 type Stage = 'entry' | 'loading' | 'review' | 'reanalyzing' | 'result';
-interface Chip { id: string; name: string; portion: string; orig?: { name: string; portion: string } }
+interface Chip { id: string; name: string; portion: string; calories?: number; orig?: { name: string; portion: string } }
 
 const SAMPLES = [
   'Two slices of pepperoni pizza and a cola',
@@ -176,7 +176,7 @@ export default function Home() {
       {
         onSuccess: (r) => {
           setFirst(r);
-          setChips(r.foods.map((f) => ({ id: newId(), name: f.name, portion: f.portion, orig: { ...f } })));
+          setChips(r.foods.map((f) => ({ id: newId(), name: f.name, portion: f.portion, calories: f.calories, orig: { ...f } })));
           setStage('review');
         },
         onError: (e) => {
@@ -214,7 +214,7 @@ export default function Home() {
     };
     setLog(entry);
     setStage('result');
-    track({ event: 'spike_estimated', level: est.glycemic_level });
+    track({ event: 'spike_estimated', level: est.glycemic_level, calories: est.calories });
     try {
       upsertLog(entry);
       setSaveError(null);
@@ -243,7 +243,7 @@ export default function Home() {
     estimate.mutate(
       { data: { input: 'text', text: desc || first.name } },
       {
-        onSuccess: (r) => persist({ ...r, foods: clean.map((c) => ({ name: c.name.trim(), portion: c.portion.trim() })) }),
+        onSuccess: (r) => persist(r),
         onError: (e) => {
           setText(desc);
           setPhoto(null);
@@ -437,7 +437,7 @@ export default function Home() {
           </p>
           <ul className="mt-5 space-y-2">
             {chips.map((c, i) => (
-              <li key={c.id} className="rise flex items-center gap-2 rounded-2xl bg-card border border-card-border p-2 pl-4" style={{ animationDelay: `${i * 50}ms` }}>
+              <li key={c.id} className="rise flex flex-wrap items-center gap-2 rounded-2xl bg-card border border-card-border p-2 pl-4" style={{ animationDelay: `${i * 50}ms` }}>
                 <input
                   data-testid={`input-food-name-${i}`}
                   value={c.name}
@@ -452,6 +452,11 @@ export default function Home() {
                   placeholder="portion"
                   className="w-28 rounded-full bg-muted px-3 py-1.5 text-sm font-mono outline-none focus:ring-2 focus:ring-ring/40"
                 />
+                <span className="order-last basis-full text-[11px] text-muted-foreground pb-1" data-testid={`text-food-calories-${i}`}>
+                  {typeof c.calories === 'number' && c.orig?.name === c.name.trim() && c.orig?.portion === c.portion.trim()
+                    ? `~${Math.round(c.calories).toLocaleString()} kcal · Estimate`
+                    : 'Estimate · calories recalculated when confirmed'}
+                </span>
                 <button
                   data-testid={`button-remove-food-${i}`}
                   onClick={() => setChips((cs) => cs.filter((x) => x.id !== c.id))}
@@ -529,10 +534,15 @@ function Result({
     <section className="rise">
       <p className="font-mono text-[11px] uppercase tracking-[0.2em] text-primary">Step 3 of 3 &middot; the curve</p>
       <h1 className="font-display text-3xl mt-2" data-testid="text-meal-name">{est.name}</h1>
-      <div className="mt-3 flex items-center gap-2">
+      <div className="mt-3 flex flex-wrap items-center gap-2">
         <span className="rounded-full px-3 py-1 text-sm font-semibold" style={{ background: s.soft, color: s.color }} data-testid="status-level">
           {level} spike
         </span>
+        {typeof est.calories === 'number' && Number.isFinite(est.calories) && (
+          <span className="text-xs text-muted-foreground" data-testid="text-meal-calories">
+            ~{Math.round(est.calories).toLocaleString()} kcal <span className="text-[10px]">· Estimate</span>
+          </span>
+        )}
         <span className="text-xs text-muted-foreground font-mono">{new Date(log.date).toLocaleString([], { weekday: 'short', hour: 'numeric', minute: '2-digit' })}</span>
       </div>
       <p className="mt-3 text-[15px] leading-relaxed" data-testid="text-reason">{est.reason}</p>

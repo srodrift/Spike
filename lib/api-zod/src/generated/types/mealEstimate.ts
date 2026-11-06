@@ -9,6 +9,8 @@ import type { Food } from './food';
 import type { MealEstimateGlycemicLevel } from './mealEstimateGlycemicLevel';
 
 export interface MealEstimate {
+  /** @minimum 0 */
+  calories: number;
   name: string;
   foods: Food[];
   glycemic_level: MealEstimateGlycemicLevel;

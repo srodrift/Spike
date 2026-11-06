@@ -52,10 +52,14 @@ export function loadDemoWeek(): void {
   ];
   const walked = new Set([0, 1, 2, 5, 8, 11]);
   const fixed = new Set([0, 1, 5, 8]);
+  const demoCalories = [850, 720, 350, 220, 480, 650, 430, 390, 620, 560, 370, 820, 590, 510];
   const logs: MealLog[] = samples.map((sample, index) => {
     const date = new Date();
     date.setDate(date.getDate() - (6 - Math.floor(index / 2)));
     date.setHours(index % 2 === 0 ? 8 : 12, 0, 0, 0);
+    const names = sample.name.split(/ with | and /);
+    const calories = demoCalories[index]!;
+    const each = Math.floor(calories / names.length);
     return {
       id: `demo-${localDateKey(date)}-${index}`,
       date: date.toISOString(),
@@ -63,7 +67,11 @@ export function loadDemoWeek(): void {
       demo: true,
       estimate: {
         name: sample.name,
-        foods: sample.name.split(/ with | and /).map((name) => ({ name, portion: '1 typical serving' })),
+        calories,
+        foods: names.map((name, i) => ({
+          name, portion: '1 typical serving',
+          calories: i === names.length - 1 ? calories - each * i : each,
+        })),
         glycemic_level: sample.level,
         reason: sample.level === 'High'
           ? 'A larger portion of refined carbohydrates or added sugar may produce a sharper rise.'
@@ -146,6 +154,7 @@ export function track(p: EventPayload): void {
   if (p.from) data.from = p.from;
   if (p.to) data.to = p.to;
   if (p.source) data.source = p.source;
+  if (typeof p.calories === 'number') data.calories = p.calories;
   trackSpikeEvent(data).catch(() => undefined);
 }
 

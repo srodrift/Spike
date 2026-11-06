@@ -7,6 +7,8 @@
  */
 
 export interface Food {
+  /** @minimum 0 */
+  calories: number;
   name: string;
   portion: string;
 }

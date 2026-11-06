@@ -36,6 +36,7 @@ _Populate as you build — non-obvious choices a reader couldn't infer from the 
 - Selecting a walk fix is a plan, not evidence of walking; only explicitly completed walks count in the weekly view.
 - Demo mode must preserve real logs and suppress analytics for demo records. Its requested 5-day streak is explicitly simulated: two meals on each of seven days would otherwise imply seven.
 - Voice summaries are educational illustrations, not medical advice. Keep the ElevenLabs key and requests on the server; browser speech is only the explicitly requested failure/timeout fallback.
+- Calories are secondary to glucose: label them "Estimate" and derive them in the same meal-analysis call, including recalculation after food edits.
 
 ## User preferences
 

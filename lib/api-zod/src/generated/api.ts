@@ -31,13 +31,19 @@ export const EstimateMealBody = zod.object({
   "image": zod.string().max(estimateMealBodyImageMax).optional()
 })
 
+export const estimateMealResponseCaloriesMin = 0;
+
+export const estimateMealResponseFoodsItemCaloriesMin = 0;
+
 export const estimateMealResponseSwapsMax = 3;
 
 
 
 export const EstimateMealResponse = zod.object({
+  "calories": zod.number().min(estimateMealResponseCaloriesMin),
   "name": zod.string(),
   "foods": zod.array(zod.object({
+  "calories": zod.number().min(estimateMealResponseFoodsItemCaloriesMin),
   "name": zod.string(),
   "portion": zod.string()
 })),
@@ -47,6 +53,8 @@ export const EstimateMealResponse = zod.object({
 })
 
 
+export const trackSpikeEventBodyCaloriesMin = 0;
+
 export const trackSpikeEventBodyDistinctIdMax = 80;
 
 export const trackSpikeEventBodyCountMin = 0;
@@ -54,6 +62,7 @@ export const trackSpikeEventBodyCountMin = 0;
 
 
 export const TrackSpikeEventBody = zod.object({
+  "calories": zod.number().min(trackSpikeEventBodyCaloriesMin).optional(),
   "event": zod.enum(['meal_logged', 'spike_estimated', 'fix_viewed', 'fix_applied', 'spike_reduced', 'weekly_view_opened', 'foods_edited', 'voice_played']),
   "source": zod.enum(['elevenlabs', 'browser']).optional(),
   "distinctId": zod.string().max(trackSpikeEventBodyDistinctIdMax),

@@ -106,7 +106,7 @@ router.post("/spike/events", async (req, res): Promise<void> => {
     res.status(429).json({ error: "Too many events." });
     return;
   }
-  const { event, distinctId, input, level, fix_type, from, to, count, source } = parsed.data;
+  const { event, distinctId, input, level, fix_type, from, to, count, source, calories } = parsed.data;
   const required: Record<string, boolean> = {
     meal_logged: !!input,
     spike_estimated: !!level,
@@ -128,7 +128,7 @@ router.post("/spike/events", async (req, res): Promise<void> => {
   }
   // Allowlisted event properties only: never meal contents, photos or transcripts.
   const fields = event === "meal_logged" ? { input }
-    : event === "spike_estimated" ? { level }
+    : event === "spike_estimated" ? { level, ...(typeof calories === "number" ? { calories } : {}) }
     : event === "fix_viewed" || event === "fix_applied" ? { fix_type }
     : event === "spike_reduced" ? { from, to }
     : event === "foods_edited" ? { count } : {};

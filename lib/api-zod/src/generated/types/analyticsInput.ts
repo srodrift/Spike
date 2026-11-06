@@ -14,6 +14,8 @@ import type { AnalyticsInputSource } from './analyticsInputSource';
 import type { AnalyticsInputTo } from './analyticsInputTo';
 
 export interface AnalyticsInput {
+  /** @minimum 0 */
+  calories?: number;
   event: AnalyticsInputEvent;
   source?: AnalyticsInputSource;
   /** @maxLength 80 */
