@@ -106,7 +106,7 @@ router.post("/spike/events", async (req, res): Promise<void> => {
     res.status(429).json({ error: "Too many events." });
     return;
   }
-  const { event, distinctId, input, level, fix_type, from, to, count, source, calories, minutes, via_park } = parsed.data;
+  const { event, distinctId, input, level, fix_type, from, to, count, source, calories, minutes, via_park, type } = parsed.data;
   const required: Record<string, boolean> = {
     meal_logged: !!input,
     spike_estimated: !!level,
@@ -120,6 +120,10 @@ router.post("/spike/events", async (req, res): Promise<void> => {
     walk_started: true,
     walk_completed: typeof minutes === "number" && typeof via_park === "boolean",
     location_denied: true,
+    safety_check_completed: true,
+    movement_option_shown: !!type,
+    movement_started: !!type && type !== "none",
+    movement_completed: !!type && type !== "none",
   };
   if (!distinctId.trim() || !required[event]) {
     res.status(400).json({ error: "Missing event properties." });
@@ -137,6 +141,9 @@ router.post("/spike/events", async (req, res): Promise<void> => {
     : event === "spike_reduced" ? { from, to }
     : event === "foods_edited" ? { count } : {};
   if (event === "voice_played") Object.assign(fields, { source });
+  if (event === "movement_option_shown" || event === "movement_started" || event === "movement_completed") {
+    Object.assign(fields, { type });
+  }
   if (event === "walk_map_opened" || event === "walk_started" || event === "walk_completed") {
     Object.assign(fields, {
       ...(typeof minutes === "number" ? { minutes } : {}),

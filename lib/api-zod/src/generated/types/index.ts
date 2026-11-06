@@ -14,6 +14,7 @@ export * from './analyticsInputInput';
 export * from './analyticsInputLevel';
 export * from './analyticsInputSource';
 export * from './analyticsInputTo';
+export * from './analyticsInputType';
 export * from './eventReceipt';
 export * from './food';
 export * from './healthStatus';

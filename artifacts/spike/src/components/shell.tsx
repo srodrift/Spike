@@ -1,10 +1,11 @@
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { Link, useLocation } from 'wouter';
 import { DemoControls, useDemoLoaded } from './demo-controls';
 
 export function Shell({ children }: { children: ReactNode }) {
   const [loc] = useLocation();
   const demo = useDemoLoaded();
+  const [details, setDetails] = useState(false);
   const tab = (href: string, label: string, id: string) => {
     const active = href === '/' ? loc === '/' : loc.startsWith(href);
     return (
@@ -38,13 +39,32 @@ export function Shell({ children }: { children: ReactNode }) {
       </header>
       <main className="flex-1 mx-auto w-full max-w-xl px-5 pt-6 pb-10">{children}</main>
       <footer className="mx-auto max-w-xl w-full px-5 pb-8 text-xs text-muted-foreground space-y-2">
-        <p className="font-medium text-foreground/80" data-testid="text-disclaimer">
-          General wellness education, not medical advice. Not for insulin or medication decisions.
+        <p className="font-medium text-foreground/80 flex items-center gap-2" data-testid="text-disclaimer">
+          <span className="truncate">Education only, not medical advice.</span>
+          <button
+            type="button"
+            data-testid="button-disclaimer-details"
+            aria-expanded={details}
+            aria-controls="disclaimer-details"
+            onClick={() => setDetails((d) => !d)}
+            className="shrink-0 underline underline-offset-2 text-primary"
+          >
+            {details ? 'Hide' : 'Details'}
+          </button>
+          <span aria-hidden className="text-border">|</span>
+          <Link href="/?movement=settings" data-testid="link-movement-settings" className="shrink-0 underline underline-offset-2">
+            Movement settings
+          </Link>
         </p>
-        <p>
-          Estimates are rough: portion sizes are guessed and individual responses vary widely. Meal analysis is sent to an AI
-          service; your logs stay on this device; usage analytics are anonymous.
-        </p>
+        {details && (
+          <div id="disclaimer-details" className="space-y-2 rise" data-testid="text-disclaimer-details">
+            <p>General wellness education, not medical advice. Not for insulin or medication decisions.</p>
+            <p>
+              Estimates are rough: portion sizes are guessed and individual responses vary widely. Meal analysis is sent to an AI
+              service; your logs stay on this device; usage analytics are anonymous.
+            </p>
+          </div>
+        )}
         <DemoControls placement="footer" />
       </footer>
     </div>

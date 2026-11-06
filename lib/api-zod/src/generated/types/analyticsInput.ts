@@ -12,11 +12,13 @@ import type { AnalyticsInputInput } from './analyticsInputInput';
 import type { AnalyticsInputLevel } from './analyticsInputLevel';
 import type { AnalyticsInputSource } from './analyticsInputSource';
 import type { AnalyticsInputTo } from './analyticsInputTo';
+import type { AnalyticsInputType } from './analyticsInputType';
 
 export interface AnalyticsInput {
   /** @minimum 0 */
   calories?: number;
   event: AnalyticsInputEvent;
+  type?: AnalyticsInputType;
   /** @minimum 0 */
   minutes?: number;
   via_park?: boolean;

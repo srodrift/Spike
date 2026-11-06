@@ -15,6 +15,10 @@ export interface MealLog {
   walkStartedAt?: number;
   walkMinutes?: number;
   walkViaPark?: boolean;
+  movementType?: 'walk' | 'home' | 'desk' | 'gentle';
+  movementStartedAt?: number;
+  movementCompleted?: boolean;
+  movementMinutes?: number;
 }
 
 const LOGS_KEY = 'spike.logs.v1';
@@ -160,6 +164,7 @@ export function track(p: EventPayload): void {
   if (typeof p.calories === 'number') data.calories = p.calories;
   if (typeof p.minutes === 'number') data.minutes = p.minutes;
   if (typeof p.via_park === 'boolean') data.via_park = p.via_park;
+  if (p.type) data.type = p.type;
   trackSpikeEvent(data).catch(() => undefined);
 }
 

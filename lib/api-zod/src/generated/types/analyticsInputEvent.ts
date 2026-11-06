@@ -22,4 +22,8 @@ export const AnalyticsInputEvent = {
   walk_started: 'walk_started',
   walk_completed: 'walk_completed',
   location_denied: 'location_denied',
+  safety_check_completed: 'safety_check_completed',
+  movement_option_shown: 'movement_option_shown',
+  movement_started: 'movement_started',
+  movement_completed: 'movement_completed',
 } as const;

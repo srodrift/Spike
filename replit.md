@@ -39,6 +39,8 @@ _Populate as you build — non-obvious choices a reader couldn't infer from the 
 - Calories are secondary to glucose: label them "Estimate" and derive them in the same meal-analysis call, including recalculation after food edits.
 - Walking locations stay transient and never enter logs or analytics. A park beyond ~400m cannot fit in an 800m return loop; show the real route length rather than promise ten minutes.
 - Only pedestrian-routed paths may be presented as routes through a park. Unverified fallback loops must be labeled schematic, not directions.
+- Movement safety answers stay in localStorage only and must never enter analytics or server requests. A doctor's exercise restriction takes priority over pain and location: offer no routine or movement curve reduction.
+- Non-walking movement routines must not count as post-meal walks in Week. All movement reductions remain illustrative, not exercise clearance or personalized medical advice.
 
 ## User preferences
 

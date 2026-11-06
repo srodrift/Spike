@@ -174,7 +174,10 @@ export function WalkSuggestion({
     abortRef.current?.abort();
     setRefining(false);
     const saved = onStart(at, viaPark);
-    if (saved && !log.demo) track({ event: 'walk_started', minutes: 10, via_park: viaPark });
+    if (saved && !log.demo) {
+      track({ event: 'walk_started', minutes: 10, via_park: viaPark });
+      track({ event: 'movement_started', type: 'walk' });
+    }
     if (!saved) frozen.current = false;
     setNow(at);
     busyRef.current = false;
@@ -189,6 +192,7 @@ export function WalkSuggestion({
     const viaPark = !!log.walkViaPark;
     if (onComplete(minutes, viaPark) && !log.demo) {
       track({ event: 'walk_completed', minutes, via_park: viaPark });
+      track({ event: 'movement_completed', type: 'walk' });
     }
     busyRef.current = false;
     setBusy(false);

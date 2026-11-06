@@ -5,7 +5,7 @@ export function spokenSummary(log: MealLog): string {
   const name = log.estimate.name.trim().split(/\s+/).slice(0, 6).join(' ');
   const original = log.estimate.glycemic_level;
   const fix = log.appliedFixes[0];
-  const action = fix === 'walk' ? 'a post-meal walk'
+  const action = fix === 'walk' ? ((log.movementType ?? 'walk') === 'walk' ? 'a 10-minute walk after' : '10 minutes of movement after')
     : fix === 'food_order' ? 'veggies or protein first' : 'the meal swap';
   return `${name}: ${original.toLowerCase()} estimated spike. ${
     fix ? `With ${action}: ${stepDown(original).toLowerCase()} illustrated spike. ` : ''
@@ -142,7 +142,7 @@ export function HearSummary({ log }: { log: MealLog }) {
         className="rounded-full border border-input bg-card px-4 py-2 text-sm font-medium hover:border-foreground/40 transition-colors"
         onClick={() => state === 'idle' ? void play() : (stop(), setState('idle'))}
         aria-label={state === 'idle' ? 'Hear it' : 'Stop voice summary'}
-      >{state === 'loading' ? 'Preparing voice… Cancel' : state === 'playing' ? 'Stop audio' : '🔊 Hear it'}</button>
+      >{state === 'loading' ? 'Preparing voice… Cancel' : state === 'playing' ? 'Stop audio' : 'Hear it'}</button>
       <p className="text-xs text-muted-foreground mt-2">AI voice summary · tap to listen</p>
       <p className="text-xs text-muted-foreground mt-1" data-testid="text-voice-summary">{summary}</p>
       {note && <p role="status" className="text-xs text-muted-foreground mt-1">{note}</p>}

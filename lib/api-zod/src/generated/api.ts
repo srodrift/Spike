@@ -65,7 +65,8 @@ export const trackSpikeEventBodyCountMin = 0;
 
 export const TrackSpikeEventBody = zod.object({
   "calories": zod.number().min(trackSpikeEventBodyCaloriesMin).optional(),
-  "event": zod.enum(['meal_logged', 'spike_estimated', 'fix_viewed', 'fix_applied', 'spike_reduced', 'weekly_view_opened', 'foods_edited', 'voice_played', 'walk_map_opened', 'walk_started', 'walk_completed', 'location_denied']),
+  "event": zod.enum(['meal_logged', 'spike_estimated', 'fix_viewed', 'fix_applied', 'spike_reduced', 'weekly_view_opened', 'foods_edited', 'voice_played', 'walk_map_opened', 'walk_started', 'walk_completed', 'location_denied', 'safety_check_completed', 'movement_option_shown', 'movement_started', 'movement_completed']),
+  "type": zod.enum(['walk', 'home', 'desk', 'gentle', 'none']).optional(),
   "minutes": zod.number().min(trackSpikeEventBodyMinutesMin).optional(),
   "via_park": zod.boolean().optional(),
   "source": zod.enum(['elevenlabs', 'browser']).optional(),

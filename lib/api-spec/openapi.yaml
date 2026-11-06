@@ -158,7 +158,10 @@ components:
           minimum: 0
         event:
           type: string
-          enum: [meal_logged, spike_estimated, fix_viewed, fix_applied, spike_reduced, weekly_view_opened, foods_edited, voice_played, walk_map_opened, walk_started, walk_completed, location_denied]
+          enum: [meal_logged, spike_estimated, fix_viewed, fix_applied, spike_reduced, weekly_view_opened, foods_edited, voice_played, walk_map_opened, walk_started, walk_completed, location_denied, safety_check_completed, movement_option_shown, movement_started, movement_completed]
+        type:
+          type: string
+          enum: [walk, home, desk, gentle, none]
         minutes:
           type: number
           minimum: 0

@@ -76,6 +76,21 @@ export const AnalyticsInputEvent = {
   walk_started: 'walk_started',
   walk_completed: 'walk_completed',
   location_denied: 'location_denied',
+  safety_check_completed: 'safety_check_completed',
+  movement_option_shown: 'movement_option_shown',
+  movement_started: 'movement_started',
+  movement_completed: 'movement_completed',
+} as const;
+
+export type AnalyticsInputType = typeof AnalyticsInputType[keyof typeof AnalyticsInputType];
+
+
+export const AnalyticsInputType = {
+  walk: 'walk',
+  home: 'home',
+  desk: 'desk',
+  gentle: 'gentle',
+  none: 'none',
 } as const;
 
 export type AnalyticsInputSource = typeof AnalyticsInputSource[keyof typeof AnalyticsInputSource];
@@ -135,6 +150,7 @@ export interface AnalyticsInput {
   /** @minimum 0 */
   calories?: number;
   event: AnalyticsInputEvent;
+  type?: AnalyticsInputType;
   /** @minimum 0 */
   minutes?: number;
   via_park?: boolean;

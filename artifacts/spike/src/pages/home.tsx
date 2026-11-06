@@ -5,6 +5,9 @@ import { useEstimateMeal, estimateMeal, type MealEstimate, type MealInput } from
 import { CurveChart } from '@/components/curve-chart';
 import { HearSummary } from '@/components/hear-summary';
 import { WalkSuggestion } from '@/components/walk-suggestion';
+import { MovementRoutine } from '@/components/movement-routine';
+import { MovementSettingsForm } from '@/components/movement-settings-form';
+import { loadMovementSettings, movementOption, type MovementSettings } from '@/lib/movement';
 import {
   compressImage,
   loadLogs,
@@ -17,6 +20,32 @@ import {
   type InputKind,
   type MealLog,
 } from '@/lib/spike';
+
+type MoveKind = 'walk' | 'home' | 'desk' | 'gentle';
+const DOCTOR_MSG = 'Check with your doctor about safe movement after meals';
+const CLEAR_MOVE = { walkCompleted: false, walkStartedAt: undefined, walkMinutes: undefined, walkViaPark: undefined, movementStartedAt: undefined, movementCompleted: undefined, movementMinutes: undefined };
+
+/** Hide movement for doctor-limited users, even on reopened logs. */
+function displayLog(log: MealLog, settings: MovementSettings | null): MealLog {
+  if (settings?.doctorLimit && log.appliedFixes.includes('walk')) return { ...log, appliedFixes: log.appliedFixes.filter((f) => f !== 'walk') };
+  return log;
+}
+
+function HeroCurves() {
+  return (
+    <figure className="mt-4 flex items-end gap-4 max-w-sm" data-testid="img-hero-curves">
+      <svg viewBox="0 0 160 70" className="w-40 h-[70px] shrink-0" aria-hidden="true" focusable="false">
+        <path d="M4 64 H156" stroke="hsl(var(--border))" strokeWidth="1.5" />
+        <path d="M6 62 C30 62 40 8 62 8 C84 8 92 62 120 62 L154 62" fill="none" stroke="hsl(12 82% 56%)" strokeWidth="3" strokeLinecap="round" />
+        <path d="M6 62 C34 62 48 36 72 36 C98 36 110 60 154 60" fill="none" stroke="hsl(170 40% 36%)" strokeWidth="2.5" strokeDasharray="5 5" strokeLinecap="round" />
+      </svg>
+      <figcaption className="text-xs space-y-1.5 pb-1">
+        <span className="flex items-center gap-2"><span className="w-4 h-[3px] rounded bg-primary" />Your meal</span>
+        <span className="flex items-center gap-2"><span className="w-4 border-t-2 border-dashed" style={{ borderColor: 'hsl(170 40% 36%)' }} />With 10 min of movement</span>
+      </figcaption>
+    </figure>
+  );
+}
 
 type Stage = 'entry' | 'loading' | 'review' | 'reanalyzing' | 'result';
 interface Chip { id: string; name: string; portion: string; calories?: number; orig?: { name: string; portion: string } }
@@ -64,6 +93,10 @@ export default function Home() {
   const recRef = useRef<SR>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const viewedFor = useRef<string | null>(null);
+  const [settings, setSettings] = useState<MovementSettings | null>(() => loadMovementSettings());
+  const [formOpen, setFormOpen] = useState(false);
+  const [pendingMove, setPendingMove] = useState(false);
+  const [doctorNote, setDoctorNote] = useState(false);
 
   const estimate = useEstimateMeal({ mutation: { mutationFn: ({ data }) => estimateWithTimeout(data) } });
 
@@ -73,7 +106,12 @@ export default function Home() {
 
   // Reopen a log
   useEffect(() => {
-    const id = new URLSearchParams(search).get('log');
+    const params = new URLSearchParams(search);
+    if (params.get('movement') === 'settings') {
+      setPendingMove(false);
+      setFormOpen(true);
+    }
+    const id = params.get('log');
     if (!id) return;
     try {
       const found = loadLogs().find((l) => l.id === id);
@@ -104,6 +142,9 @@ export default function Home() {
     setLog(null);
     setError(null);
     setSaveError(null);
+    setFormOpen(false);
+    setPendingMove(false);
+    setDoctorNote(false);
     if (search) navigate('/');
   };
 
@@ -272,13 +313,33 @@ export default function Home() {
     }
   };
 
-  const applyFix = (f: FixType) => {
-    if (!log || log.appliedFixes.includes(f)) return;
-    const wasEmpty = log.appliedFixes.length === 0;
-    if (!updateLog({ ...log, appliedFixes: [...log.appliedFixes, f] })) return;
-    if (!log.demo) track({ event: 'fix_applied', fix_type: f });
-    const from = log.estimate.glycemic_level;
-    if (!log.demo && wasEmpty && from !== 'Low') track({ event: 'spike_reduced', from, to: stepDown(from) });
+  const applyFix = (f: FixType, base?: MealLog, s?: MovementSettings | null) => {
+    const cur = base ?? log;
+    const st = s === undefined ? settings : s;
+    if (!cur) return;
+    let extra: Partial<MealLog> = {};
+    if (f === 'walk') {
+      if (!st) {
+        setPendingMove(true);
+        setFormOpen(true);
+        return;
+      }
+      const opt = movementOption(st);
+      if (!cur.demo) track({ event: 'movement_option_shown', type: opt });
+      if (opt === 'none') {
+        setDoctorNote(true);
+        return;
+      }
+      setDoctorNote(false);
+      extra = { ...CLEAR_MOVE, movementType: opt };
+    }
+    const shown = displayLog(cur, st);
+    if (cur.appliedFixes.includes(f) && shown.appliedFixes.includes(f)) return;
+    const wasEmpty = shown.appliedFixes.length === 0;
+    if (!updateLog({ ...cur, ...extra, appliedFixes: [...cur.appliedFixes.filter((x) => x !== f), f] })) return;
+    if (!cur.demo) track({ event: 'fix_applied', fix_type: f });
+    const from = cur.estimate.glycemic_level;
+    if (!cur.demo && wasEmpty && from !== 'Low') track({ event: 'spike_reduced', from, to: stepDown(from) });
   };
 
   const removeFix = (f: FixType) => {
@@ -286,12 +347,47 @@ export default function Home() {
     updateLog({
       ...log,
       appliedFixes: log.appliedFixes.filter((x) => x !== f),
-      walkCompleted: f === 'walk' ? false : log.walkCompleted,
-      walkStartedAt: f === 'walk' ? undefined : log.walkStartedAt,
-      walkMinutes: f === 'walk' ? undefined : log.walkMinutes,
-      walkViaPark: f === 'walk' ? undefined : log.walkViaPark,
+      ...(f === 'walk' ? { ...CLEAR_MOVE, movementType: undefined } : {}),
     });
   };
+
+  const onSettingsSaved = (s: MovementSettings) => {
+    const firstTime = !settings;
+    setSettings(s);
+    setFormOpen(false);
+    if (firstTime) track({ event: 'safety_check_completed' });
+    if (search.includes('movement=settings')) navigate(log ? `/?log=${log.id}` : '/');
+    if (!log || stage !== 'result') { setPendingMove(false); return; }
+    const opt = movementOption(s);
+    if (pendingMove) {
+      setPendingMove(false);
+      applyFix('walk', log, s);
+      return;
+    }
+    if (!log.appliedFixes.includes('walk')) { setDoctorNote(false); return; }
+    const curType = log.movementType ?? 'walk';
+    if (opt === 'none') {
+      if (!log.demo) track({ event: 'movement_option_shown', type: 'none' });
+      setDoctorNote(true);
+      updateLog({ ...log, ...CLEAR_MOVE, movementType: undefined, appliedFixes: log.appliedFixes.filter((x) => x !== 'walk') });
+    } else if (opt !== curType) {
+      if (!log.demo) track({ event: 'movement_option_shown', type: opt });
+      setDoctorNote(false);
+      updateLog({ ...log, ...CLEAR_MOVE, movementType: opt });
+    }
+  };
+
+  const settingsForm = formOpen && (
+    <MovementSettingsForm
+      initial={settings}
+      onSaved={onSettingsSaved}
+      onCancel={() => {
+        setFormOpen(false);
+        setPendingMove(false);
+        if (search.includes('movement=settings')) navigate(log ? `/?log=${log.id}` : '/');
+      }}
+    />
+  );
 
   return (
     <div>
@@ -302,8 +398,10 @@ export default function Home() {
             What&rsquo;s on your <em className="text-primary">plate</em>?
           </h1>
           <p className="text-muted-foreground mt-3 max-w-sm">
-            Snap it, say it, or type it. We&rsquo;ll sketch how it might rise and a few easy ways to soften it.
+            Snap, say, or type your meal. See how it may spike your blood sugar, and one easy way to flatten it.
           </p>
+          <HeroCurves />
+          {stage === 'entry' && settingsForm}
 
           <div className="mt-7 grid grid-cols-2 gap-3">
             <button
@@ -502,7 +600,13 @@ export default function Home() {
         </section>
       )}
 
-      {stage === 'result' && log && <Result log={log} saveError={saveError} onFix={applyFix} onUnfix={removeFix} onWalk={(done) => updateLog({ ...log, walkCompleted: done, walkStartedAt: done ? log.walkStartedAt : undefined, walkMinutes: done ? log.walkMinutes : undefined, walkViaPark: done ? log.walkViaPark : undefined })}
+      {stage === 'result' && log && <Result log={displayLog(log, settings)} saveError={saveError} onFix={(f) => applyFix(f)} onUnfix={removeFix}
+          settingsForm={settingsForm || null}
+          doctorNote={doctorNote || !!(settings?.doctorLimit && log.appliedFixes.includes('walk'))}
+          onOpenSettings={() => { setPendingMove(false); setFormOpen(true); }}
+          onMoveStart={(movementStartedAt) => updateLog({ ...log, movementStartedAt, movementCompleted: false })}
+          onMoveComplete={(movementMinutes) => updateLog({ ...log, movementCompleted: true, movementMinutes })}
+          onMoveUndo={() => updateLog({ ...log, movementCompleted: false, movementStartedAt: undefined, movementMinutes: undefined })} onWalk={(done) => updateLog({ ...log, walkCompleted: done, walkStartedAt: done ? log.walkStartedAt : undefined, walkMinutes: done ? log.walkMinutes : undefined, walkViaPark: done ? log.walkViaPark : undefined })}
           onWalkStart={(walkStartedAt, walkViaPark) => updateLog({ ...log, walkStartedAt, walkViaPark })}
           onWalkComplete={(walkMinutes, walkViaPark) => updateLog({ ...log, walkCompleted: true, walkMinutes, walkViaPark })}
           onNew={reset} />}
@@ -520,7 +624,19 @@ function Result({
   onWalkStart,
   onWalkComplete,
   onNew,
+  settingsForm,
+  doctorNote,
+  onOpenSettings,
+  onMoveStart,
+  onMoveComplete,
+  onMoveUndo,
 }: {
+  settingsForm: React.ReactNode;
+  doctorNote: boolean;
+  onOpenSettings: () => void;
+  onMoveStart: (at: number) => boolean;
+  onMoveComplete: (minutes: number) => boolean;
+  onMoveUndo: () => boolean;
   log: MealLog;
   saveError: string | null;
   onFix: (f: FixType) => void;
@@ -535,8 +651,9 @@ function Result({
   const applied = log.appliedFixes;
   const adjusted = applied.length ? stepDown(level) : null;
   const s = LEVEL_STYLE[level];
+  const moveType: MoveKind = log.movementType ?? 'walk';
   const fixes: { type: FixType; label: string; icon: typeof Footprints }[] = [
-    { type: 'walk', label: '10-min walk after', icon: Footprints },
+    { type: 'walk', label: '10 min of movement after', icon: Footprints },
     { type: 'food_order', label: 'Eat veggies/protein first', icon: Salad },
     { type: 'swap', label: est.swaps[0] ?? 'Try a lighter swap', icon: Shuffle },
   ];
@@ -544,16 +661,18 @@ function Result({
   return (
     <section className="rise">
       <p className="font-mono text-[11px] uppercase tracking-[0.2em] text-primary">Step 3 of 3 &middot; the curve</p>
-      <h1 className="font-display text-3xl mt-2" data-testid="text-meal-name">{est.name}</h1>
-      <div className="mt-3 flex flex-wrap items-center gap-2">
-        <span className="rounded-full px-3 py-1 text-sm font-semibold" style={{ background: s.soft, color: s.color }} data-testid="status-level">
-          {level} spike
+      <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-2">
+        <span className="rounded-full px-5 py-2 text-2xl font-bold tracking-tight text-[hsl(40_60%_98%)]" style={{ background: s.color }} data-testid="status-level">
+          {level === 'Medium' ? 'Moderate' : level} spike
         </span>
         {typeof est.calories === 'number' && Number.isFinite(est.calories) && (
-          <span className="text-xs text-muted-foreground" data-testid="text-meal-calories">
+          <span className="text-sm text-muted-foreground" data-testid="text-meal-calories">
             ~{Math.round(est.calories).toLocaleString()} kcal <span className="text-[10px]">· Estimate</span>
           </span>
         )}
+      </div>
+      <h1 className="font-display text-3xl mt-3" data-testid="text-meal-name">{est.name}</h1>
+      <div className="mt-1 flex flex-wrap items-center gap-2">
         <span className="text-xs text-muted-foreground font-mono">{new Date(log.date).toLocaleString([], { weekday: 'short', hour: 'numeric', minute: '2-digit' })}</span>
       </div>
       <p className="mt-3 text-[15px] leading-relaxed" data-testid="text-reason">{est.reason}</p>
@@ -607,7 +726,29 @@ function Result({
         })}
       </div>
 
-      {applied.includes('walk') && (
+      <button type="button" onClick={onOpenSettings} data-testid="button-movement-settings" className="mt-2 text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground">
+        Movement settings
+      </button>
+      {settingsForm}
+      {doctorNote && !applied.includes('walk') && (
+        <div role="status" className="mt-3 rounded-2xl bg-secondary text-secondary-foreground p-4 rise" data-testid="text-doctor-note">
+          <p className="font-semibold">{DOCTOR_MSG}</p>
+          <p className="text-xs mt-1 opacity-80">These fixes do not involve movement:</p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {!applied.includes('food_order') && (
+              <button onClick={() => onFix('food_order')} data-testid="button-doctor-food-order" className="rounded-full bg-foreground text-background px-4 py-2 text-sm font-semibold">Eat veggies/protein first</button>
+            )}
+            {!applied.includes('swap') && (
+              <button onClick={() => onFix('swap')} data-testid="button-doctor-swap" className="rounded-full border border-foreground/30 px-4 py-2 text-sm font-semibold">{est.swaps[0] ?? 'Try a lighter swap'}</button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {applied.includes('walk') && moveType !== 'walk' && (
+        <MovementRoutine key={`${log.id}-${moveType}`} log={log} type={moveType} onStart={onMoveStart} onComplete={onMoveComplete} onUndo={onMoveUndo} />
+      )}
+      {applied.includes('walk') && moveType === 'walk' && (
         <WalkSuggestion key={log.id} log={log} onStart={onWalkStart} onComplete={onWalkComplete} onUndo={() => onWalk(false)} />
       )}
 
