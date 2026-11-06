@@ -361,32 +361,46 @@ export default function Home() {
   const onSettingsSaved = (s: MovementSettings) => {
     const firstTime = !settings;
     setSettings(s);
-    setFormOpen(false);
     if (firstTime) track({ event: 'safety_check_completed' });
-    if (search.includes('movement=settings')) navigate(log ? `/?log=${log.id}` : '/');
-    if (!log || stage !== 'result') { setPendingMove(false); return; }
+    const close = () => {
+      setFormOpen(false);
+      if (search.includes('movement=settings')) navigate(log ? `/?log=${log.id}` : '/');
+    };
+    if (!log || stage !== 'result') { setPendingMove(false); close(); return; }
     const opt = movementOption(s);
     if (pendingMove) {
       setPendingMove(false);
       applyFix('walk', log, s);
+      close();
       return;
     }
-    if (!log.appliedFixes.includes('walk')) { setDoctorNote(false); return; }
+    if (!log.appliedFixes.includes('walk')) { setDoctorNote(false); close(); return; }
     const curType = log.movementType ?? 'walk';
+    let saved = true;
     if (opt === 'none') {
       if (!log.demo) track({ event: 'movement_option_shown', type: 'none' });
       setDoctorNote(true);
-      updateLog({ ...log, ...CLEAR_MOVE, movementType: undefined, appliedFixes: log.appliedFixes.filter((x) => x !== 'walk') });
+      saved = updateLog({ ...log, ...CLEAR_MOVE, movementType: undefined, appliedFixes: log.appliedFixes.filter((x) => x !== 'walk') });
     } else if (opt !== curType) {
       if (!log.demo) track({ event: 'movement_option_shown', type: opt });
       setDoctorNote(false);
-      updateLog({ ...log, ...CLEAR_MOVE, movementType: opt });
+      saved = updateLog({ ...log, ...CLEAR_MOVE, movementType: opt });
     }
+    if (!saved) {
+      // The form has already saved the safety answers. Keep those answers
+      // active (especially a doctor's restriction), but allow the log cleanup
+      // to be retried instead of claiming the entire save was rolled back.
+      setSaveError('Movement settings saved, but meal history could not be updated. The incompatible plan is hidden. Save these settings again to retry; Week still shows the saved history.');
+      return;
+    }
+    close();
   };
 
   const settingsForm = formOpen && (
     <MovementSettingsForm
       initial={settings}
+      retryOnly={!!(log?.appliedFixes.includes('walk') && settings
+        && movementOption(settings) !== (log.movementType ?? 'walk'))}
       onSaved={onSettingsSaved}
       onCancel={() => {
         setFormOpen(false);

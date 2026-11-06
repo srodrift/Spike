@@ -7,7 +7,7 @@ import Home from './home';
 import Week from './week';
 import { loadLogs, LOGS_CHANGED, type MealLog } from '@/lib/spike';
 import { seedWalk } from '@/test/walk-fixtures';
-import { saveMovementSettings } from '@/lib/movement';
+import { loadMovementSettings, saveMovementSettings, type MovementSettings } from '@/lib/movement';
 
 // Rendering charts/audio and fetching/rasterizing maps are unrelated to the
 // timer contract. Keep WalkSuggestion, Home, Week and persistence real.
@@ -460,6 +460,243 @@ describe.each([
       }
       expect(screen.getByTestId('text-stat-walks').textContent).toBe(count);
       expect(trackSpikeEvent).not.toHaveBeenCalled();
+    } finally {
+      writes.mockRestore();
+      window.removeEventListener(LOGS_CHANGED, changed);
+    }
+  });
+});
+
+const MOVEMENT_CASES = [
+  { type: 'walk', settings: { pain: false, doctorLimit: false, location: 'out' } },
+  { type: 'home', settings: { pain: false, doctorLimit: false, location: 'home' } },
+  { type: 'desk', settings: { pain: false, doctorLimit: false, location: 'desk' } },
+  { type: 'gentle', settings: { pain: true, doctorLimit: false, location: 'out' } },
+] as const;
+const PROGRESS_KEYS = [
+  'walkStartedAt', 'walkMinutes', 'walkViaPark',
+  'movementStartedAt', 'movementCompleted', 'movementMinutes',
+] as const;
+
+function editMovementSettings(settings: MovementSettings) {
+  if (!screen.queryByTestId('form-movement-settings')) click('button-movement-settings');
+  click(`radio-pain-${settings.pain ? 'yes' : 'no'}`);
+  click(`radio-doctor-${settings.doctorLimit ? 'yes' : 'no'}`);
+  click(`radio-location-${settings.location}`);
+  click('button-movement-save');
+}
+
+describe.each(MOVEMENT_CASES)('$type settings transitions', ({ type, settings }) => {
+  function seedProgress(completed: boolean, demo = false) {
+    const log = seedWalk({
+      demo, appliedFixes: ['walk', 'food_order', 'swap'], movementType: type,
+      ...(type === 'walk' ? {
+        walkStartedAt: START - 90_000, walkCompleted: completed, walkViaPark: true,
+        ...(completed ? { walkMinutes: 1.5 } : {}),
+      } : {
+        movementStartedAt: START - 90_000, movementCompleted: completed,
+        ...(completed ? { movementMinutes: 1.5 } : {}),
+      }),
+    });
+    saveMovementSettings(settings);
+    return log;
+  }
+
+  function expectNoOldProgress() {
+    for (const id of [
+      'text-walk-timer', 'button-walk-done', 'button-walk-undo',
+      'text-movement-timer', 'button-movement-done', 'button-movement-undo',
+    ]) expect(screen.queryByTestId(id)).not.toBeInTheDocument();
+    for (const prefix of ['walk', 'movement']) {
+      const status = screen.queryByTestId(`text-${prefix}-status`);
+      if (status) expect(status).not.toHaveTextContent(/logged|via a park/);
+    }
+  }
+
+  it.each([false, true])('switches options and clears all progress across reload (completed: %s)', (completed) => {
+    const log = seedProgress(completed);
+    const otherMeals = loadLogs().filter((entry) => entry.id !== log.id);
+    const target = MOVEMENT_CASES[type === 'home' ? 0 : 1];
+    let view = openMeal(log);
+    editMovementSettings(target.settings);
+    const next = saved(log);
+    expect(next).toEqual({
+      ...log, movementType: target.type, walkCompleted: false,
+      ...Object.fromEntries(PROGRESS_KEYS.map((key) => [key, undefined])),
+    });
+    expect(next.appliedFixes).toEqual(log.appliedFixes);
+    for (const key of PROGRESS_KEYS) expect(next).not.toHaveProperty(key);
+    expect(loadMovementSettings()).toEqual(target.settings);
+    expect(screen.queryByTestId('form-movement-settings')).not.toBeInTheDocument();
+    expectNoOldProgress();
+    expect(screen.getByTestId('text-stat-walks')).toHaveTextContent(/^0$/);
+    view.unmount();
+    vi.setSystemTime(START + 30_000);
+    view = openMeal(log);
+    expect(saved(log)).toEqual(next);
+    expectNoOldProgress();
+    if (target.type === 'walk') {
+      expect(screen.getByTestId('button-find-walk')).toBeEnabled();
+    } else {
+      expect(screen.getByTestId(`card-movement-${target.type}`)).toBeInTheDocument();
+      click('button-movement-start');
+      expect(screen.getByTestId('text-movement-timer')).toHaveTextContent(/^10:00$/);
+      expect(saved(log).movementStartedAt).toBe(START + 30_000);
+    }
+    expect(screen.getByTestId('text-stat-walks')).toHaveTextContent(/^0$/);
+    expect(loadLogs().filter((entry) => entry.id !== log.id)).toEqual(otherMeals);
+    expect(events('walk_completed')).toHaveLength(0);
+    expect(events('movement_completed')).toHaveLength(0);
+  });
+
+  it.each([false, true])('doctor restriction removes only movement and persists (completed: %s)', (completed) => {
+    const log = seedProgress(completed);
+    const view = openMeal(log);
+    const restricted = { ...settings, doctorLimit: true };
+    editMovementSettings(restricted);
+    const next = saved(log);
+    expect(next).toEqual({
+      ...log, appliedFixes: ['food_order', 'swap'], movementType: undefined, walkCompleted: false,
+      ...Object.fromEntries(PROGRESS_KEYS.map((key) => [key, undefined])),
+    });
+    expect(next).not.toHaveProperty('movementType');
+    for (const key of PROGRESS_KEYS) expect(next).not.toHaveProperty(key);
+    const expectRestricted = () => {
+      expectNoOldProgress();
+      expect(screen.getByTestId('text-doctor-note')).toHaveTextContent('Check with your doctor');
+      expect(screen.getByTestId('button-fix-walk')).toHaveAttribute('aria-pressed', 'false');
+      for (const option of MOVEMENT_CASES.filter((entry) => entry.type !== 'walk')) {
+        expect(screen.queryByTestId(`card-movement-${option.type}`)).not.toBeInTheDocument();
+      }
+      expect(screen.getByTestId('text-stat-walks')).toHaveTextContent(/^0$/);
+    };
+    expectRestricted();
+    view.unmount();
+    openMeal(log);
+    expect(loadMovementSettings()).toEqual(restricted);
+    expect(saved(log)).toEqual(next);
+    // Reopened restricted meals must still explain why movement is unavailable.
+    click('button-fix-walk');
+    expectRestricted();
+    expect(events('walk_completed')).toHaveLength(0);
+    expect(events('movement_completed')).toHaveLength(0);
+  });
+
+  it('hides a movement-only reduction even when restriction cleanup cannot save', () => {
+    const progress = seedProgress(true);
+    const log = { ...progress, appliedFixes: ['walk'] as MealLog['appliedFixes'] };
+    localStorage.setItem('spike.logs.v1', JSON.stringify([log]));
+    const view = openMeal(log);
+    expect(screen.getByTestId('text-reduced')).toBeInTheDocument();
+    const writes = failLogWrites();
+    editMovementSettings({ ...settings, doctorLimit: true });
+    expect(screen.queryByTestId('text-reduced')).not.toBeInTheDocument();
+    expect(saved(log)).toEqual(log);
+    view.unmount();
+    openMeal(log);
+    expect(screen.queryByTestId('text-reduced')).not.toBeInTheDocument();
+    expect(screen.getByTestId('text-doctor-note')).toBeInTheDocument();
+    writes.mockRestore();
+    click('button-movement-settings');
+    click('button-movement-save');
+    expect(saved(log).appliedFixes).toEqual([]);
+    expect(saved(log).walkCompleted).toBe(false);
+    expect(screen.queryByTestId('text-reduced')).not.toBeInTheDocument();
+  });
+
+  it.each([false, true])('retains compatible progress without writing history (completed: %s)', (completed) => {
+    const log = seedProgress(completed);
+    const view = openMeal(log);
+    const count = screen.getByTestId('text-stat-walks').textContent;
+    const writes = failLogWrites();
+    // A changed answer can still select the same option: pain takes priority
+    // over location for gentle movement.
+    const compatible = type === 'gentle' ? { ...settings, location: 'desk' as const } : settings;
+    editMovementSettings(compatible);
+    expect(saved(log)).toEqual(log);
+    expect(loadMovementSettings()).toEqual(compatible);
+    expect(screen.queryByTestId('form-movement-settings')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('text-save-error')).not.toBeInTheDocument();
+    expect(writes.mock.calls.filter(([key]) => key === 'spike.logs.v1')).toHaveLength(0);
+    view.unmount();
+    vi.setSystemTime(START + 30_000);
+    openMeal(log);
+    expect(saved(log)).toEqual(log);
+    const prefix = type === 'walk' ? 'walk' : 'movement';
+    if (completed) {
+      expect(screen.getByTestId(`text-${prefix}-status`)).toHaveTextContent('1.5 min logged');
+      expect(screen.getByTestId(`button-${prefix}-undo`)).toBeEnabled();
+    } else {
+      expect(screen.getByTestId(`text-${prefix}-timer`)).toHaveTextContent(/^8:00$/);
+      expect(screen.getByTestId(`button-${prefix}-done`)).toBeEnabled();
+    }
+    expect(screen.getByTestId('text-stat-walks').textContent).toBe(count);
+    expect(events('movement_option_shown')).toHaveLength(0);
+  });
+
+  it.each([
+    { completed: false, restricted: false, demo: false },
+    { completed: true, restricted: false, demo: false },
+    { completed: false, restricted: true, demo: false },
+    { completed: true, restricted: true, demo: false },
+    { completed: false, restricted: false, demo: true },
+    { completed: true, restricted: true, demo: true },
+  ])('failed history write stays safe and can retry after reload ($completed, restricted: $restricted, demo: $demo)', ({ completed, restricted, demo }) => {
+    const log = seedProgress(completed, demo);
+    const target: MovementSettings = restricted
+      ? { ...settings, doctorLimit: true }
+      : MOVEMENT_CASES[type === 'home' ? 0 : 1].settings;
+    let view = openMeal(log);
+    const count = screen.getByTestId('text-stat-walks').textContent!;
+    const key = demo ? 'spike.demo.logs.v1' : 'spike.logs.v1';
+    const raw = localStorage.getItem(key);
+    const writes = failLogWrites(demo);
+    const changed = vi.fn();
+    window.addEventListener(LOGS_CHANGED, changed);
+    try {
+      editMovementSettings(target);
+      expect(loadMovementSettings()).toEqual(target);
+      expect(localStorage.getItem(key)).toBe(raw);
+      expect(saved(log)).toEqual(log);
+      expect(screen.getByTestId('text-save-error')).toHaveTextContent('Movement settings saved, but meal history could not be updated');
+      expect(screen.getByTestId('form-movement-settings')).toBeInTheDocument();
+      expect(screen.getByTestId(`radio-doctor-${restricted ? 'yes' : 'no'}`)).toBeChecked();
+      expect(screen.getByTestId(`radio-location-${target.location}`)).toBeChecked();
+      expect(screen.getByTestId('radio-doctor-no')).toBeDisabled();
+      expect(screen.getByTestId(`radio-location-${settings.location}`)).toBeDisabled();
+      expect(screen.getByTestId('text-movement-retry')).toHaveTextContent('before changing these saved safety answers');
+      expectNoOldProgress();
+      expect(screen.getByTestId('button-fix-walk')).toHaveAttribute('aria-pressed', 'false');
+      if (restricted) expect(screen.getByTestId('text-doctor-note')).toBeInTheDocument();
+      expect(screen.getByTestId('text-stat-walks').textContent).toBe(count);
+      expect(changed).not.toHaveBeenCalled();
+      view.unmount();
+      view = openMeal(log);
+      expectNoOldProgress();
+      expect(saved(log)).toEqual(log);
+      expect(screen.getByTestId('text-stat-walks').textContent).toBe(count);
+      click('button-movement-settings');
+      expect(screen.getByTestId('radio-doctor-no')).toBeDisabled();
+      expect(screen.getByTestId(`radio-location-${settings.location}`)).toBeDisabled();
+      writes.mockRestore();
+      click('button-movement-save');
+      expect(changed).toHaveBeenCalledTimes(1);
+      expect(screen.queryByTestId('text-save-error')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('form-movement-settings')).not.toBeInTheDocument();
+      const next = saved(log);
+      expect(next.walkCompleted).toBe(false);
+      for (const field of PROGRESS_KEYS) expect(next).not.toHaveProperty(field);
+      expect(next.appliedFixes).toEqual(restricted ? ['food_order', 'swap'] : log.appliedFixes);
+      const expectedCount = Number(count) - Number(type === 'walk' && completed);
+      expect(screen.getByTestId('text-stat-walks')).toHaveTextContent(String(expectedCount));
+      view.unmount();
+      openMeal(log);
+      expect(saved(log)).toEqual(next);
+      expectNoOldProgress();
+      expect(screen.getByTestId('text-stat-walks')).toHaveTextContent(String(expectedCount));
+      expect(events('walk_completed')).toHaveLength(0);
+      expect(events('movement_completed')).toHaveLength(0);
+      if (demo) expect(trackSpikeEvent).not.toHaveBeenCalled();
     } finally {
       writes.mockRestore();
       window.removeEventListener(LOGS_CHANGED, changed);

@@ -1,1 +1,2 @@
 - [Latency-bounded meal analysis](meal-analysis.md) — structured AI output and fast reasoning settings matter for the ten-second fallback.
+- [Partial movement saves](movement-partial-saves.md) — keep saved safety answers active when meal-history cleanup fails; never imply the safety save rolled back.

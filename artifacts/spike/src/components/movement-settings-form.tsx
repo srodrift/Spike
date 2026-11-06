@@ -30,10 +30,12 @@ export function MovementSettingsForm({
   initial,
   onSaved,
   onCancel,
+  retryOnly = false,
 }: {
   initial: MovementSettings | null;
   onSaved: (s: MovementSettings) => void;
   onCancel: () => void;
+  retryOnly?: boolean;
 }) {
   const [pain, setPain] = useState<YN>(initial?.pain ?? null);
   const [doctor, setDoctor] = useState<YN>(initial?.doctorLimit ?? null);
@@ -69,18 +71,23 @@ export function MovementSettingsForm({
           <X className="w-4 h-4" />
         </button>
       </div>
-      <YesNo id="pain" label="Any injury or pain that limits walking or standing?" value={pain} onChange={setPain} />
-      <YesNo id="doctor" label="Has a doctor told you to limit exercise?" value={doctor} onChange={setDoctor} />
-      <fieldset className="mt-4">
-        <legend className="text-sm font-medium">Where are you right now?</legend>
-        <div className="mt-2 flex flex-wrap gap-2">
-          {PLACES.map((p) => (
-            <label key={p.v} className={`cursor-pointer rounded-full border px-4 py-2 text-sm font-medium transition-colors has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ring/40 ${loc === p.v ? 'bg-foreground text-background border-foreground' : 'bg-card border-input'}`}>
-              <input type="radio" name="location" className="sr-only" checked={loc === p.v} onChange={() => setLoc(p.v)} data-testid={`radio-location-${p.v}`} />
-              {p.label}
-            </label>
-          ))}
-        </div>
+      {retryOnly && <p role="alert" className="mt-3 text-sm text-destructive" data-testid="text-movement-retry">
+        Update this meal's history before changing these saved safety answers. Retry when device storage is available.
+      </p>}
+      <fieldset disabled={retryOnly}>
+        <YesNo id="pain" label="Any injury or pain that limits walking or standing?" value={pain} onChange={setPain} />
+        <YesNo id="doctor" label="Has a doctor told you to limit exercise?" value={doctor} onChange={setDoctor} />
+        <fieldset className="mt-4">
+          <legend className="text-sm font-medium">Where are you right now?</legend>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {PLACES.map((p) => (
+              <label key={p.v} className={`cursor-pointer rounded-full border px-4 py-2 text-sm font-medium transition-colors has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ring/40 ${loc === p.v ? 'bg-foreground text-background border-foreground' : 'bg-card border-input'}`}>
+                <input type="radio" name="location" className="sr-only" checked={loc === p.v} onChange={() => setLoc(p.v)} data-testid={`radio-location-${p.v}`} />
+                {p.label}
+              </label>
+            ))}
+          </div>
+        </fieldset>
       </fieldset>
       {err && (
         <p role="alert" className="mt-3 rounded-2xl bg-destructive/10 text-destructive p-3 text-sm flex gap-2" data-testid="text-movement-error">
@@ -88,7 +95,7 @@ export function MovementSettingsForm({
         </p>
       )}
       <button type="submit" disabled={!ready} data-testid="button-movement-save" className="mt-4 w-full rounded-full bg-primary text-primary-foreground py-3 font-semibold disabled:opacity-40">
-        Save
+        {retryOnly ? 'Retry history update' : 'Save'}
       </button>
     </form>
   );
