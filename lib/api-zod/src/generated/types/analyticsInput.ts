@@ -17,6 +17,9 @@ export interface AnalyticsInput {
   /** @minimum 0 */
   calories?: number;
   event: AnalyticsInputEvent;
+  /** @minimum 0 */
+  minutes?: number;
+  via_park?: boolean;
   source?: AnalyticsInputSource;
   /** @maxLength 80 */
   distinctId: string;

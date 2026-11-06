@@ -4,6 +4,7 @@ import { Camera, Mic, MicOff, Plus, X, ArrowRight, RotateCcw, Footprints, Salad,
 import { useEstimateMeal, estimateMeal, type MealEstimate, type MealInput } from '@workspace/api-client-react';
 import { CurveChart } from '@/components/curve-chart';
 import { HearSummary } from '@/components/hear-summary';
+import { WalkSuggestion } from '@/components/walk-suggestion';
 import {
   compressImage,
   loadLogs,
@@ -286,6 +287,9 @@ export default function Home() {
       ...log,
       appliedFixes: log.appliedFixes.filter((x) => x !== f),
       walkCompleted: f === 'walk' ? false : log.walkCompleted,
+      walkStartedAt: f === 'walk' ? undefined : log.walkStartedAt,
+      walkMinutes: f === 'walk' ? undefined : log.walkMinutes,
+      walkViaPark: f === 'walk' ? undefined : log.walkViaPark,
     });
   };
 
@@ -498,7 +502,10 @@ export default function Home() {
         </section>
       )}
 
-      {stage === 'result' && log && <Result log={log} saveError={saveError} onFix={applyFix} onUnfix={removeFix} onWalk={(done) => updateLog({ ...log, walkCompleted: done })} onNew={reset} />}
+      {stage === 'result' && log && <Result log={log} saveError={saveError} onFix={applyFix} onUnfix={removeFix} onWalk={(done) => updateLog({ ...log, walkCompleted: done, walkStartedAt: done ? log.walkStartedAt : undefined, walkMinutes: done ? log.walkMinutes : undefined, walkViaPark: done ? log.walkViaPark : undefined })}
+          onWalkStart={(walkStartedAt, walkViaPark) => updateLog({ ...log, walkStartedAt, walkViaPark })}
+          onWalkComplete={(walkMinutes, walkViaPark) => updateLog({ ...log, walkCompleted: true, walkMinutes, walkViaPark })}
+          onNew={reset} />}
 
     </div>
   );
@@ -510,13 +517,17 @@ function Result({
   onFix,
   onUnfix,
   onWalk,
+  onWalkStart,
+  onWalkComplete,
   onNew,
 }: {
   log: MealLog;
   saveError: string | null;
   onFix: (f: FixType) => void;
   onUnfix: (f: FixType) => void;
-  onWalk: (done: boolean) => void;
+  onWalk: (done: boolean) => boolean;
+  onWalkStart: (startedAt: number, viaPark: boolean) => boolean;
+  onWalkComplete: (minutes: number, viaPark: boolean) => boolean;
   onNew: () => void;
 }) {
   const est = log.estimate;
@@ -555,13 +566,6 @@ function Result({
 
       <div className="mt-5 rounded-3xl bg-card border border-card-border p-4">
         <CurveChart original={level} adjusted={adjusted} fixCount={applied.length} delayed={applied.includes('food_order')} />
-        <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs">
-          <span className="flex items-center gap-1.5"><i className="w-3 h-1 rounded-full" style={{ background: s.color }} /> As planned</span>
-          {adjusted && (
-            <span className="flex items-center gap-1.5"><i className="w-3 h-1 rounded-full" style={{ background: LEVEL_STYLE[adjusted].color }} /> With your fixes</span>
-          )}
-          <span className="text-muted-foreground font-mono ml-auto">0&ndash;2 hours</span>
-        </div>
         <p className="mt-3 text-xs font-medium text-muted-foreground" data-testid="text-illustrative">Illustrative estimate, not a measurement.</p>
       </div>
 
@@ -604,19 +608,7 @@ function Result({
       </div>
 
       {applied.includes('walk') && (
-        <div className="mt-3 rounded-2xl border border-dashed border-input p-4 flex items-center gap-3 rise">
-          <Footprints className="w-5 h-5 text-secondary-foreground" />
-          <div className="flex-1 text-sm">
-            {log.walkCompleted ? 'Walk done. Nice work.' : 'Walk planned. Mark it once you have actually walked.'}
-          </div>
-          <button
-            data-testid="button-walk-done"
-            onClick={() => onWalk(!log.walkCompleted)}
-            className={`rounded-full px-4 py-2 text-sm font-semibold transition-colors ${log.walkCompleted ? 'bg-secondary text-secondary-foreground' : 'bg-primary text-primary-foreground'}`}
-          >
-            {log.walkCompleted ? 'Undo' : 'Mark walk done'}
-          </button>
-        </div>
+        <WalkSuggestion key={log.id} log={log} onStart={onWalkStart} onComplete={onWalkComplete} onUndo={() => onWalk(false)} />
       )}
 
       {est.swaps.length > 1 && (

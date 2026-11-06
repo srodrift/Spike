@@ -72,6 +72,10 @@ export const AnalyticsInputEvent = {
   weekly_view_opened: 'weekly_view_opened',
   foods_edited: 'foods_edited',
   voice_played: 'voice_played',
+  walk_map_opened: 'walk_map_opened',
+  walk_started: 'walk_started',
+  walk_completed: 'walk_completed',
+  location_denied: 'location_denied',
 } as const;
 
 export type AnalyticsInputSource = typeof AnalyticsInputSource[keyof typeof AnalyticsInputSource];
@@ -131,6 +135,9 @@ export interface AnalyticsInput {
   /** @minimum 0 */
   calories?: number;
   event: AnalyticsInputEvent;
+  /** @minimum 0 */
+  minutes?: number;
+  via_park?: boolean;
   source?: AnalyticsInputSource;
   /** @maxLength 80 */
   distinctId: string;

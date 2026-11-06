@@ -18,4 +18,8 @@ export const AnalyticsInputEvent = {
   weekly_view_opened: 'weekly_view_opened',
   foods_edited: 'foods_edited',
   voice_played: 'voice_played',
+  walk_map_opened: 'walk_map_opened',
+  walk_started: 'walk_started',
+  walk_completed: 'walk_completed',
+  location_denied: 'location_denied',
 } as const;
