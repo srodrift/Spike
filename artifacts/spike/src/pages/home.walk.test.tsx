@@ -283,6 +283,190 @@ describe('removing selected fixes through Home', () => {
   });
 });
 
+describe.each([
+  { location: 'home', pain: false, type: 'home' },
+  { location: 'desk', pain: false, type: 'desk' },
+  { location: 'out', pain: true, type: 'gentle' },
+] as const)('$type routine removal and persistence', ({ location, pain, type }) => {
+  function seedRoutine(completed?: boolean) {
+    const log = seedWalk({
+      appliedFixes: ['walk', 'food_order', 'swap'],
+      movementType: type,
+      ...(completed === undefined ? {} : {
+        movementStartedAt: START - 90_000,
+        movementCompleted: completed,
+        ...(completed ? { movementMinutes: 1.5 } : {}),
+      }),
+    });
+    saveMovementSettings({ pain, doctorLimit: false, location });
+    return log;
+  }
+
+  function expectFreshRoutine(log: MealLog, count: string) {
+    expect(saved(log)).toMatchObject({ movementType: type, walkCompleted: false });
+    expect(saved(log)).not.toHaveProperty('movementStartedAt');
+    expect(saved(log)).not.toHaveProperty('movementMinutes');
+    expect(saved(log).movementCompleted).toBeFalsy();
+    expect(screen.getByTestId(`card-movement-${type}`)).toBeInTheDocument();
+    expect(screen.getByTestId('button-fix-walk')).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByTestId('button-movement-start')).toBeEnabled();
+    expect(screen.queryByTestId('text-movement-timer')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('button-movement-undo')).not.toBeInTheDocument();
+    expect(screen.getByTestId('text-stat-walks').textContent).toBe(count);
+  }
+
+  it.each([false, true])('removes progress and reselects fresh after reload (completed: %s)', (completed) => {
+    const log = seedRoutine();
+    const otherMeals = loadLogs().filter((entry) => entry.id !== log.id);
+    let view = openMeal(log);
+    const count = screen.getByTestId('text-stat-walks').textContent!;
+    click('button-movement-start');
+    act(() => { vi.advanceTimersByTime(90_000); });
+    if (completed) click('button-movement-done');
+    expect(saved(log)).toMatchObject({
+      movementType: type, movementStartedAt: START,
+      movementCompleted: completed, walkCompleted: false,
+      ...(completed ? { movementMinutes: 1.5 } : {}),
+    });
+    expect(screen.getByTestId('text-stat-walks').textContent).toBe(count);
+
+    // Removing the suggestion clears its type as well as its progress.
+    click('button-fix-walk');
+    const removed = saved(log);
+    expect(removed).toEqual({
+      ...log, appliedFixes: ['food_order', 'swap'], movementType: undefined,
+    });
+    for (const key of ['movementType', 'movementStartedAt', 'movementMinutes', 'movementCompleted']) {
+      expect(removed).not.toHaveProperty(key);
+    }
+    expect(loadLogs().filter((entry) => entry.id !== log.id)).toEqual(otherMeals);
+    expect(screen.getByTestId('button-fix-walk')).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.queryByTestId(`card-movement-${type}`)).not.toBeInTheDocument();
+    expect(screen.queryByTestId('text-movement-timer')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('button-movement-undo')).not.toBeInTheDocument();
+    expect(screen.getByTestId('text-stat-walks').textContent).toBe(count);
+
+    view.unmount();
+    vi.setSystemTime(START + TEN_MINUTES);
+    view = openMeal(log);
+    expect(saved(log)).toEqual(removed);
+    expect(screen.getByTestId('button-fix-walk')).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.queryByTestId(`card-movement-${type}`)).not.toBeInTheDocument();
+    expect(screen.getByTestId('text-stat-walks').textContent).toBe(count);
+    click('button-fix-walk');
+    expectFreshRoutine(log, count);
+    expect(saved(log)).not.toHaveProperty('movementCompleted');
+    click('button-movement-start');
+    expect(saved(log)).toMatchObject({
+      movementType: type, movementStartedAt: START + TEN_MINUTES, movementCompleted: false,
+    });
+    expect(screen.getByTestId('text-movement-timer')).toHaveTextContent(/^10:00$/);
+    act(() => { vi.advanceTimersByTime(60_000); });
+    click('button-movement-done');
+    expect(saved(log)).toMatchObject({ movementCompleted: true, movementMinutes: 1, walkCompleted: false });
+    expect(screen.getByTestId('text-stat-walks').textContent).toBe(count);
+    view.unmount();
+    openMeal(log);
+    expect(screen.getByTestId('text-movement-status')).toHaveTextContent(/^1 min logged$/);
+    expect(screen.getByTestId('button-movement-undo')).toBeEnabled();
+    expect(screen.getByTestId('text-stat-walks').textContent).toBe(count);
+    expect(loadLogs().filter((entry) => entry.id !== log.id)).toEqual(otherMeals);
+    expect(trackSpikeEvent).not.toHaveBeenCalled();
+  });
+
+  it('Undo keeps the suggestion selected but clears completion and restarts fresh after reload', () => {
+    const log = seedRoutine(true);
+    const otherMeals = loadLogs().filter((entry) => entry.id !== log.id);
+    const view = openMeal(log);
+    const count = screen.getByTestId('text-stat-walks').textContent!;
+    expect(screen.getByTestId('text-movement-status')).toHaveTextContent('1.5 min logged');
+    click('button-movement-undo');
+    const undone = saved(log);
+    expect(undone).toEqual({
+      ...log, movementCompleted: false, movementStartedAt: undefined, movementMinutes: undefined,
+    });
+    expectFreshRoutine(log, count);
+    expect(undone.movementCompleted).toBe(false);
+    view.unmount();
+    vi.setSystemTime(START + TEN_MINUTES);
+    openMeal(log);
+    expect(saved(log)).toEqual(undone);
+    expectFreshRoutine(log, count);
+    click('button-movement-start');
+    expect(saved(log)).toMatchObject({
+      movementStartedAt: START + TEN_MINUTES, movementCompleted: false, walkCompleted: false,
+    });
+    expect(screen.getByTestId('text-movement-timer')).toHaveTextContent(/^10:00$/);
+    expect(saved(log)).not.toHaveProperty('movementMinutes');
+    act(() => { vi.advanceTimersByTime(60_000); });
+    click('button-movement-done');
+    expect(saved(log)).toMatchObject({ movementCompleted: true, movementMinutes: 1, walkCompleted: false });
+    expect(screen.getByTestId('text-stat-walks').textContent).toBe(count);
+    expect(loadLogs().filter((entry) => entry.id !== log.id)).toEqual(otherMeals);
+    expect(trackSpikeEvent).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { action: 'remove', completed: false },
+    { action: 'remove', completed: true },
+    { action: 'undo', completed: true },
+  ] as const)('failed $action preserves progress across reload and allows retry (completed: $completed)', ({ action, completed }) => {
+    const log = seedRoutine(completed);
+    let view = openMeal(log);
+    const count = screen.getByTestId('text-stat-walks').textContent!;
+    const raw = localStorage.getItem('spike.demo.logs.v1');
+    const writes = failLogWrites(true);
+    const changed = vi.fn();
+    const button = action === 'remove' ? 'button-fix-walk' : 'button-movement-undo';
+    window.addEventListener(LOGS_CHANGED, changed);
+    const expectPriorState = () => {
+      expect(localStorage.getItem('spike.demo.logs.v1')).toBe(raw);
+      expect(saved(log)).toEqual(log);
+      expect(screen.getByTestId(`card-movement-${type}`)).toBeInTheDocument();
+      expect(screen.getByTestId('button-fix-walk')).toHaveAttribute('aria-pressed', 'true');
+      expect(screen.getByTestId('text-stat-walks').textContent).toBe(count);
+      if (completed) {
+        expect(screen.getByTestId('text-movement-status')).toHaveTextContent(/^1.5 min logged$/);
+        expect(screen.getByTestId('button-movement-undo')).toBeEnabled();
+      } else {
+        expect(screen.getByTestId('text-movement-timer')).toHaveTextContent(/^8:30$/);
+        expect(screen.getByTestId('button-movement-done')).toBeEnabled();
+      }
+    };
+    try {
+      click(button);
+      expect(screen.getByTestId('text-save-error')).toHaveTextContent('Nothing was updated');
+      expectPriorState();
+      expect(changed).not.toHaveBeenCalled();
+      view.unmount();
+      view = openMeal(log);
+      expectPriorState();
+      expect(changed).not.toHaveBeenCalled();
+      writes.mockRestore();
+      click(button);
+      expect(changed).toHaveBeenCalledTimes(1);
+      expect(screen.queryByTestId('text-save-error')).not.toBeInTheDocument();
+      expect(saved(log)).not.toHaveProperty('movementStartedAt');
+      expect(saved(log)).not.toHaveProperty('movementMinutes');
+      if (action === 'undo') {
+        expectFreshRoutine(log, count);
+        expect(saved(log).movementCompleted).toBe(false);
+      } else {
+        expect(saved(log).appliedFixes).toEqual(['food_order', 'swap']);
+        expect(saved(log)).not.toHaveProperty('movementType');
+        expect(saved(log)).not.toHaveProperty('movementCompleted');
+        expect(screen.getByTestId('button-fix-walk')).toHaveAttribute('aria-pressed', 'false');
+        expect(screen.queryByTestId(`card-movement-${type}`)).not.toBeInTheDocument();
+      }
+      expect(screen.getByTestId('text-stat-walks').textContent).toBe(count);
+      expect(trackSpikeEvent).not.toHaveBeenCalled();
+    } finally {
+      writes.mockRestore();
+      window.removeEventListener(LOGS_CHANGED, changed);
+    }
+  });
+});
+
 describe('walk timer and Home persistence callbacks', () => {
   it('persists Start and restores the elapsed countdown after a reload', async () => {
     const log = seedWalk();
